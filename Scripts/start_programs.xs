@@ -336,7 +336,7 @@ func UpdateUdpProxyEndpoints(objCfg, udpProxy) {
 			if(proxy.socks5ProxyEndpoint != null) { old = proxy.socks5ProxyEndpoint.ToString(); }
 
 			if(!clr.Str.Equals(old, endpoint, clr.System.StringComparison.OrdinalIgnoreCase)) {
-				SetProperty(proxy, "socks5ProxyEndpoint", endpoint);
+				proxy.SetProperty("socks5ProxyEndpoint", endpoint);
 				mark("5FD7AF", proxy.appNames & old & " -> " & endpoint);
 			}
 		}
@@ -377,12 +377,6 @@ void print_json(obj) {
 
 	exit:
 	json = null;
-}
-
-void SetProperty(obj, property_name, val) {
-	var t = obj.GetType();
-	var pi = t.GetProperty(property_name);
-	_ pi.SetValue(obj, val, null);
 }
 
 void mark(color, content) {

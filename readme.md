@@ -333,6 +333,92 @@ m["groupName"];
 
 ---
 
+### Bracket ambiguity: Dictionary access vs ArrayList literal
+
+XS uses the same bracket syntax for two different meanings. The parser resolves the ambiguity using a fixed lookahead rule.
+
+#### Dictionary access (engine/internal dictionary)
+
+**Form (token shape):**
+
+* `[` **ident** `]`
+
+**Parser rule (authoritative):** the grammar checks the following before deciding how to parse a bracketed expression:
+
+```csharp
+bool IsDictionaryAccess()
+{
+	return la.kind == _lbrack
+		&& Peek(1).kind == _ident
+		&& Peek(2).kind == _rbrack;
+}
+```
+
+**Semantics:**
+
+* If the token sequence is exactly `[` ident `]`, it is parsed as **DictionaryAccess("ident")**.
+* This is how positional parameters work: `[p1]`, `[p2]`, … are dictionary lookups for keys `"p1"`, `"p2"`, …
+
+Examples:
+
+```xs
+string folder = [p1].ToString();
+var user = [p2];
+```
+
+#### ArrayList literal (collection literal)
+
+**Form:**
+
+* `[` `Expr` { `,` `Expr` } `]`
+
+**Semantics:**
+
+* Produces a CLR `System.Collections.ArrayList`.
+
+Examples:
+
+```xs
+var a = ["1", "2"];
+var b = [BuildProxyTpl()];
+var c = [1, 2, 3];
+```
+
+#### Critical disambiguation rule
+
+Because `[` **ident** `]` is reserved for dictionary access, the following is **not** an ArrayList literal:
+
+```xs
+[p1];
+```
+
+It is always parsed as a dictionary lookup: **DictionaryAccess("p1")**.
+
+---
+
+### One‑element ArrayList whose element comes from a variable
+
+To construct an ArrayList with a single element that is the value of a variable (e.g. `p1`), you must break the exact token pattern `[` ident `]`.
+
+Recommended patterns:
+
+1. Parenthesize the expression:
+
+```xs
+var one = [(p1)];
+```
+
+2. Use any expression involving the variable:
+
+```xs
+var one = [p1 & ""];      // if you want string coercion
+var one = [(string)p1];    // via type conversion
+```
+
+These forms cannot match `IsDictionaryAccess()` and therefore are parsed as an **ArrayList literal** with one element.
+
+---
+
 ### Array‑like initialization (literal)
 
 Supported syntax:
