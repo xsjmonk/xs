@@ -1,157 +1,252 @@
-# XS language — rules, patterns, and constraints (living spec)
+# XS language — rules & patterns (living spec)
 
-> Consolidated and **authoritative** reference for the **xs** language as implemented in your compiler/runtime.
-> This document is intentionally pragmatic: it records what **works**, what is **disallowed**, and the **standard patterns** used across your codebase.
-
----
-
-## 0) One-page mental model
-
-* xs is **C#-like syntax** compiled to IL, but with a curated feature set.
-* Variables are **region-scoped** (main / func / void / Site), not block-scoped.
-* Most runtime access happens via **CLR interop** using the `clr.` prefix.
-* The **top-level (main program)** is intentionally restricted.
+> **Authoritative, consolidated specification** of the xs language.
+> This document merges all confirmed rules, limitations, internal helpers,
+> and patterns that have been introduced, corrected, or persisted over time.
+> When conflicts exist, **this document wins**.
 
 ---
 
-## 1) Regions, scope, and declarations
+## 1) Execution regions & scope
 
-### 1.1 Regions
+### Region‑scoped variables
 
-A script executes in one of these regions:
+* Variables are **region‑scoped**, not block‑scoped.
+* A *region* is one of:
 
-* **Top-level (main program)**
-* `func` (returns a value)
-* `void` (returns nothing)
-* `Site` / `SiteConfig` (special configuration mode)
+  * **Top‑level (main program)**
+  * `func`
+  * `void`
+  * `Site` / `SiteConfig`
 
-### 1.2 Variable scope model
-
-* Variables are **region-scoped**.
-* Blocks (`{}`) do **not** create a new scope.
-
-### 1.3 Redeclaration rules (same region)
-
-* Multiple declarations of the same name in the same region are **allowed**.
-* Redeclaration does **not** create a new variable.
-* Redeclaration behavior:
-
-  * With initializer → behaves like an **assignment**.
-  * Without initializer → **ignored**.
-
-### 1.4 Type consistency (same region)
-
-* Each variable has **one effective type per region**.
-* Weak types: `var`, `object`.
-
-Rules:
-
-* Weak → strong upgrade is allowed.
-* Strong → weak redeclaration is ignored.
-* Strong → different strong redeclaration → **compile error**, reporting **both declaration locations**.
-
-### 1.5 Where declarations are allowed
-
-In `func` / `void` / Site regions:
-
-* Allowed inside: `if`, `for`, `while`, `try`
-* **NOT allowed** inside: `do`, `catch`
-
-In **top-level (main program)**:
-
-* The main program is restricted; treat it as **statement orchestration only**.
-* **Avoid** declaring variables inside control blocks in main (keep declarations at top-level), because main-mode feature support is limited compared to `func`/`void`.
-
-### 1.6 Initialization happens once
-
-* Automatic initialization (e.g., `StringBuilder`, some collections) happens **only on first declaration**.
-* Redeclarations do **not** reinitialize.
+Block constructs (`if`, `for`, `while`, etc.) **do not introduce new scope**.
 
 ---
 
-## 2) Types and conversions
+### Redeclaration rules
 
-### 2.1 Supported explicit types
+* Redeclaration of a variable **in the same region is allowed**.
+* Redeclaration:
 
-* `int`, `string`, `bool`, `double`, `StringBuilder`, `object`
-* `var` for complex/unknown CLR types
+  * **Does not create** a new variable
+  * With initializer → behaves like an **assignment**
+  * Without initializer → **ignored**
 
-### 2.2 Not supported / important notes
-
-* `long` is **not** a supported xs type → use `var`.
-* `byte` is **not** a supported xs type.
-* `char` is **not** supported → use `clr.System.Char.Parse("x")`.
-* Nullable types are not supported.
-
-### 2.3 Parameter typing rule
-
-* `func` parameters are treated as **object**.
-* Convert to concrete types at the start of the function:
+Example:
 
 ```xs
-func f(p) {
-	string s = p.ToString();
-	=> s;
+int a = 1;
+if(true) {
+	int a = 2;   // assignment, not a new variable
 }
+// a == 2
 ```
 
 ---
 
-## 3) Imports and CLR interop
+### Where declarations are allowed
 
-### 3.1 Imports
+* Allowed inside:
 
-* **All imports must be at the top of the file**.
+  * `if`
+  * `for`
+  * `while`
+  * `try`
+
+* **NOT allowed** inside:
+
+  * `do`
+  * `catch`
+
+Declaring inside forbidden blocks is a **compile‑time error**.
+
+---
+
+### Type consistency per region
+
+Each variable has **one effective type per region**.
+
+* Weak types: `var`, `object`
+
+Rules:
+
+* Weak → strong upgrade is **allowed**
+* Strong → weak redeclare is **ignored**
+* Strong → different strong redeclare → **compile‑time error**
+
+  * Compiler must report **both declaration locations**
+
+---
+
+### Initialization happens once
+
+* Automatic initialization (e.g. `StringBuilder`, collections) occurs **only on the first declaration**
+* Redeclarations **never reinitialize** the variable
+
+Example:
+
+```xs
+StringBuilder sb;
+_ sb.Append("a");
+if(true) {
+	StringBuilder sb;
+	_ sb.Append("b");
+}
+// sb == "ab"
+```
+
+---
+
+## 2) Imports, CLR interop & naming
+
+### Imports
+
+* Imports must appear **only at the top of the file**
 * Syntax:
 
 ```xs
 import Full.Namespace.OrType as Alias;
 ```
 
-* Alias replaces the **first segment after** `clr.`
+* The alias replaces the **first segment after `clr.`**
 
 Example:
 
 ```xs
 import System.String as Str;
-clr.Str.IsNullOrWhiteSpace(s)
+clr.Str.IsNullOrWhiteSpace(s);
 ```
-
-### 3.2 CLR calls (strict)
-
-* All C# / CLR APIs must be called with the `clr.` prefix:
-
-```xs
-clr.Path.GetExtension(p)
-clr.System.Math.Ceiling(x)
-```
-
-* Exception: **xs internal helpers** (Section 4) do not require `clr.`.
-
-### 3.3 Subcomponents and special access operators
-
-* `.` normal member access.
-* `..` **forces CLR reflection resolution** when the compiler can’t infer the .NET type.
-
-### 3.4 CLR extension-method style (disallowed)
-
-* Only **self-defined** `func` methods can be used extension-style.
-* CLR methods **cannot** be invoked extension-style.
 
 ---
 
-## 4) xs internal helper methods (no `clr.`)
+### CLR calls (strict rule)
 
-These are **engine-provided** helpers and must be treated as native.
+* **Every CLR call must be prefixed with `clr.`**
+* Applies to:
 
-### 4.1 String helpers
-
-* `Str(...)`
-* `ReplStr(old, new)`
-* `SubStr(start, len)`
-* `IsEmpty()`
+  * static methods
+  * instance methods
+  * properties
 
 Examples:
+
+```xs
+clr.System.Math.Ceiling(x);
+clr.Path.GetExtension(p);
+```
+
+---
+
+### Extension‑style calls
+
+* Only **self‑defined `func` methods** may be called extension‑style
+* CLR methods **cannot** be called extension‑style
+
+Allowed:
+
+```xs
+func Foo(x) { ... }
+x.Foo();
+```
+
+Not allowed:
+
+```xs
+s.ToLower();  // CLR method → invalid
+```
+
+---
+
+### Reserved keywords
+
+* `url` is a **keyword** (folder of the current script)
+* Do **not** use `url` as a variable name
+
+---
+
+## 3) Script parameters & globals
+
+### Positional parameters
+
+* `[p1]`, `[p2]`, … map to runner arguments
+
+```text
+clr script.xs arg1 arg2 ...
+```
+
+---
+
+### Globals
+
+* Global variables start with `@`
+* Example:
+
+```xs
+@scriptDir = url;
+```
+
+Rules:
+
+* Globals **do not support explicit type keywords**
+* Globals are visible everywhere
+
+---
+
+## 4) Strings
+
+### String forms
+
+* Normal: `"text"`
+* Verbatim: `@"text"`
+* Free‑text (multiline literal):
+
+```xs
+StringBuilder cmd =<<<
+any text
+multiple lines
+>>>;
+```
+
+Rules:
+
+* Content is literal
+* Prefer declaring free‑text blocks as `StringBuilder`
+
+---
+
+### Operators
+
+* String concatenation: `&`
+
+---
+
+## 5) xs internal helper methods (native)
+
+These helpers are **engine-provided** (implemented in your runtime `StringLibrary` and related helpers).
+They are callable directly in xs (i.e., **no `clr.` prefix**).
+
+### 5.1 String / text helpers
+
+Notes:
+
+* `ReplStr` is **plain substring replace** (non-regex).
+* `Replace` is **regex replace** (see 5.2).
+* `IsEmpty(o)` is implemented as `IsNullOrEmptyOrWhiteSpace(o?.ToString())`.
+
+Available helpers (per `StringLibrary`):
+
+* `IsEmpty(x)`
+* `IsNullOrEmpty(x)`
+* `IsNullOrWhiteSpace(x)`
+* `ReplStr(s, textToReplace, replaceBy)` (plain replace)
+* `SubStr(s, index, length)` (implemented as `Substr`; supports `length = -1` meaning “to end”, clamps safely)
+* `Trim(s)`
+* `LTrim(s, prefix)`
+* `RTrim(s, suffix)`
+* `Len(s)`
+* `chr(intCodePoint)`
+
+Common xs style (instance-like usage depends on your binder; both styles are used in your scripts):
 
 ```xs
 if(path.IsEmpty()) { ... }
@@ -159,13 +254,34 @@ name = name.ReplStr("[", "").ReplStr("]", "")
 part = s.SubStr(0, 3)
 ```
 
-### 4.2 Regex helpers
+### 5.2 Regex helpers (regex-optimized field support)
 
-* `IsMatch(pattern)`
-* `MatchGroup(pattern, groupNameOrIndex)`
-* `MatchAll(pattern)`
+`StringLibrary` regex helpers share an internal signature shape:
 
-Examples:
+* `(caller, fieldName, content, pattern, ...)`
+
+Runtime behavior:
+
+* If `fieldName` is non-empty and `caller` has a field of that name containing a `Regex`, it reuses it.
+* Otherwise it builds a new `Regex(pattern, IgnoreCase | Multiline | Compiled)`.
+
+Regex-optimized field names tracked by the engine:
+
+* `Replace`, `IsMatch`, `Match`, `MatchAll`, `MatchMultiGroupAll`, `MatchGroupAll`, `MatchGroup`, `MatchGroupI`, `MatchCollection`
+
+Available helpers:
+
+* `IsMatch(content, pattern)`
+* `Match(content, pattern)` → first match `.Value`
+* `MatchAll(content, pattern, splitter)` → concatenates all match values
+* `MatchMultiGroupAll(content, pattern, groupSplitter, splitter)` → per match, joins groups `1..N-1`
+* `MatchGroupAll(content, pattern, groupName, splitter)` → extracts a named group across all matches
+* `MatchGroup(content, pattern, groupName)` → extracts a named group from the first match
+* `MatchGroupI(content, pattern, groupName, index)` → extracts a named group from match at `index`
+* `MatchCollection(content, pattern)` → returns a CLR `MatchCollection`
+* `Replace(content, pattern, replacer)` → regex replace
+
+Example:
 
 ```xs
 if(s.IsMatch(@"(?<id>\d+)") ) {
@@ -173,74 +289,59 @@ if(s.IsMatch(@"(?<id>\d+)") ) {
 }
 ```
 
-### 4.3 Array conversion
+### 5.3 Enumerable → ArrayList conversion helpers
 
-* `AsArr()` — converts an IEnumerable to an ArrayList.
+Engine also provides commonly used helpers:
 
----
+* `ToArrayList`
+* `AsArray`
+* `Arr`
 
-## 5) Strings
-
-### 5.1 String literals
-
-* Normal: `"..."`
-* Verbatim: `@"..."` (escape quote as `""`)
-* Free-text multiline:
-
-```xs
-StringBuilder sb =<<<
-any text
-multiple lines
->>>;
-```
-
-Notes:
-
-* Free-text content is treated as literal text.
-* Prefer declaring free-text blocks as `StringBuilder`.
-
-### 5.2 Concatenation
-
-* String concatenation operator: `&`
+These three are equivalent aliases.
 
 ---
 
-## 6) Collections and indexing
+## 6) Collections, indexing & literals
 
-### 6.1 Arrays
+### Primary collection type
 
-* C# arrays are **not supported**.
-* You primarily use **ArrayList**.
+* C# arrays are **not supported**
+* Use **ArrayList**
 
-### 6.2 Array-like accessor
+---
 
-* Use `obj[expr]` instead of `.get_item(i)`.
-* The index expression is limited to **`int` or `string`**.
+### Array‑like accessor
+
+* Use **`[expr]`**, not `.get_item`
+* `expr` is limited to:
+
+  * `int`
+  * `string`
 
 Examples:
 
 ```xs
-var first = list[0];
-var v = dict["key"]; // dictionary access
+items[0];
+dict["key"];
 ```
 
-### 6.3 Named-regex-group access via string index
-
-* A string index is commonly used to access regex named groups:
+#### Regex named‑group access
 
 ```xs
-var g = m["groupName"]; // groupName is string
+m["groupName"];
 ```
 
-### 6.4 ArrayList literal initialization
+---
 
-* Literal syntax:
+### Array‑like initialization (literal)
+
+Supported syntax:
 
 ```xs
-[expr1, expr2, expr3]
+[expr1, expr2]
 ```
 
-* Common usage: configuration templates
+Common use (config templates):
 
 ```xs
 func BuildConfigTpl() {
@@ -260,83 +361,69 @@ func BuildProxyTpl() {
 }
 ```
 
-### 6.5 Generics in CLR type names
-
-* Use backtick CLR names:
-
-```xs
-import System.Collections.Generic.Dictionary`2[System.String,System.Object] as Dictionary;
-```
-
-* `Dictionary.Keys` may not be recognized due to generics; convert keys to ArrayList first:
-
-```xs
-var keys = e.Keys.ToArrayList();
-for(int i=0;i<keys.Count;i++) {
-	var k = keys[i];
-}
-```
-
 ---
 
-## 7) Control flow
+## 7) Control flow & restrictions
 
-### 7.1 Supported constructs
+### Supported constructs
 
-* `if / elseif / else` (must use **`elseif`**, not `else if`)
+* `if / elseif / else`
 * `for`, `while`, `do while`
 * `try { } catch { }`
 * labels + `goto`
 * `break`, `continue`
 
-### 7.2 Important restrictions
+---
 
-* No `foreach`.
-* No `using` blocks — call `.Dispose()` manually.
-* No `async/await`, delegates, events.
-* No parameter modifiers: `out`, `ref`, `in`, `params`.
-* No nullable types.
-* No `throw` in xs scripts.
+### Hard restrictions
 
-### 7.3 try/catch limitations
-
-* A `catch` block cannot contain another `try-catch` (nested try-catch inside catch is unsupported).
-* Early return is **not allowed inside `catch`**.
+* No `foreach`
+* No `using`
+* No `async / await`
+* No delegates or events
+* No `out / ref / in / params`
+* No nullable types
+* No `throw`
 
 ---
 
-## 8) Returns and main-program limits
+### `elseif` only
 
-### 8.1 `func`
+* Must use `elseif`
+* `else if` is **not supported**
 
-* `func` returns a value.
-* Early return and multiple return statements are supported.
+---
 
-### 8.2 `void`
+## 8) Returns & main‑program limits
 
-* `void` returns nothing.
-* Early `return;` is supported (but **not inside `catch`**).
+### func / void
 
-### 8.3 Top-level (main program) restrictions
+* Early `return` **is allowed**
+* Early return is **NOT allowed inside `catch`**
 
-The main program is deliberately limited.
+---
 
-Practical rules:
+### Top‑level (main program)
 
-* Keep main as orchestration.
-* Avoid early return and multiple returns.
-* Prefer a single exit label and a single final `=> result;`.
-* Avoid declaring variables inside control blocks in main; declare at top-level and assign inside.
+The main program is **restricted**:
 
-Canonical main pattern:
+* Avoid early return
+* Prefer:
+
+  * straight‑line logic + final `=> result;`
+  * or branching with `goto done` → single `=>`
+
+Canonical pattern:
 
 ```xs
-string result = "done";
+string result = "ok";
 
-if(bad) { result = "aborted"; goto done; }
+if(error) {
+	result = "fail";
+	goto done;
+}
 
-// main work
-
+// main logic
 
 done:
 => result;
@@ -344,86 +431,128 @@ done:
 
 ---
 
-## 9) The `_` discard operator
+## 9) Operators & precedence highlights
 
-* Use `_` only when calling a method that **returns a value** and you intend to discard the result.
-* Do **not** use `_` with `void` methods.
+* Ternary `?:`
+* Logical: `||`, `&&`
+* Equality / relational: `== != < > <= >=`
+* Numeric: `+ - * / %`
+* Int variants: `+i -i *i \\`
+* Bitwise: `|`
+* String concat: `&`
 
-Example:
+### Special operators
 
-```xs
-_ sb.Append("x");
-clr.System.IO.Directory.CreateDirectory(p); // void → no `_`
-```
+* `..` — force CLR property/method resolution when type is unknown
+* `->` — computed property access
+
+  * Lower precedence than arithmetic / concat
 
 ---
 
-## 10) `url` keyword (script folder)
+## 10) LINQ via Dlinq
 
-* `url` evaluates to the folder path of the currently executing script.
-* Do not use `url` as a variable name.
-* `url` cannot be used directly inside `func` blocks; capture it at top-level or into a global first:
+* Import:
 
 ```xs
-@scriptDir = url;
-
-func GetDir() {
-	=> (string)@scriptDir;
-}
+import Dlinq.Linq as Dlinq;
 ```
+
+* Methods:
+
+  * `clr.Dlinq.Select`
+  * `clr.Dlinq.Where`
+  * `clr.Dlinq.OrderBy`
+  * `clr.Dlinq.Any`
+
+Rules:
+
+* First argument: `IEnumerable`
+* Second argument: `string` lambda expression
+* Return type: **ArrayList**
 
 ---
 
 ## 11) PowerShell integration patterns
 
-### 11.1 Capturing output
+* Preferred runner (captured output):
 
-* Use `RunPowershellFromMemory(command, shouldShowError)` to get stdout.
-* `clr.Ex.Powershell.Run(cmd)` may write directly to console; do not rely on its return value for captured output.
+```xs
+RunPowershellFromMemory(command, shouldShowError)
+```
 
-### 11.2 CRLF output
+* Uses `powershell.exe -EncodedCommand`
 
-* Prefer `\r\n` in console/text output for Windows alignment.
+* Returns stdout
+
+* stderr optionally shown via `mark`
+
+* `clr.Ex.Powershell.Run(cmd)` may write directly to console; do not rely on return value
 
 ---
 
 ## 12) Canonical templates
 
-### 12.1 User config trio (standard)
+### User config (standard trio)
 
-* `GetUserConfigPath(fileName)` creates `%UserProfile%\\xs_config` if needed.
-* `LoadUserConfig(fileName, templateObj)` requires a **full-structure template**.
-* `SaveUserConfig(fileName, obj)` serializes and writes.
-
-### 12.2 Working folder initializer
-
-* `GetWorkingFolder([p1])` loads `last_folder` from user config, prompts, loops until exists, returns normalized path.
+* `GetUserConfigPath(fileName)`
+* `LoadUserConfig(fileName, templateObj)` — template must have full structure
+* `SaveUserConfig(fileName, obj)`
 
 ---
 
-## 13) Practical style conventions
+### Working folder initializer
 
-* Use **tabs** for indentation.
-* Prefer explicit types for primitives (`int/string/bool/double/StringBuilder/object`).
-* Use `var` for complex CLR types.
-* Prefer combined declarations for same type:
+* `GetWorkingFolder([p1])`
+
+  * Loads `last_folder` from user config
+  * Prompts to confirm/change
+  * Loops until folder exists
+  * Returns normalized folder path
+
+---
+
+## 13) Practical style guidelines
+
+* Use **tabs** for indentation
+* Prefer explicit types (`int`, `string`, `bool`, `double`, `StringBuilder`) when possible
+* Use `var` for complex CLR types
+* Combine same‑type declarations:
 
 ```xs
 int i=0, n=0;
-string a="", b="";
 ```
 
-* Avoid `goto` unless it actually changes control flow (no ceremonial `goto exit` / `exit:` pairs).
-* Dispose resources explicitly (`Close()` then `Dispose()` if required by your library conventions).
+* Convert `func` parameters to concrete locals early
+* Keep main program short; move logic into `func` / `void`
+* Avoid exceptions (`throw` not supported)
 
 ---
 
-## 14) Common pitfalls checklist
+## 14) Quick correctness examples
 
-* ✅ All CLR APIs must start with `clr.` (unless internal helpers).
-* ✅ No `long`, no `byte`, no `new byte[n]`.
-* ✅ Use `obj[expr]` accessor (expr is int/string).
-* ✅ No `else if` → use `elseif`.
-* ✅ No nested try-catch inside `catch`.
-* ✅ No early return inside `catch`.
-* ✅ Keep main simple; avoid main-only unsupported features.
+### Redeclare behaves like assignment
+
+```xs
+void test() {
+	int total = 1;
+	if(true) {
+		int total = 5;
+	}
+	[p] = total; // 5
+}
+```
+
+### StringBuilder not reinitialized
+
+```xs
+void test() {
+	StringBuilder sb;
+	_ sb.Append("a");
+	if(true) {
+		StringBuilder sb;
+		_ sb.Append("b");
+	}
+	[p] = sb.ToString(); // "ab"
+}
+```
