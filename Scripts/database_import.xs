@@ -156,38 +156,11 @@ func GetSpeed() {
 
 func dtoProd() {
 	=> new {
-		_prodid: "",
-		_name: "",
-		_category: "",
-		_oprice: "",
-		_sjtime: "",
-		_pic: "",
-		_str: "",
-		_source: 1,
-		_type: 1,
-		_disp: 1,
-		_poll: "",
-		media_rec: "",
-		author: "",
-		coauthor: "",
-		author_des: "",
-		pubnum: "",
-		pagenum: "",
-		ISBN: "",
-		publisher: "",
-		booksize: "",
-		cover: "",
-		bookcatalog: "",
-		bundle: "",
-		viewrelate: "",
-		buyrelate: "",
-		pubrelate: "",
-		_lastCheckTime: "",
-		_shop: "",
-		picurl: "",
-		upload: 1,
-		_brand: "",
-		_fields: ""
+		prodid: "",
+		name: "",
+		/* ... */
+		brand: "",
+		fields: ""
 	};
 }
 
