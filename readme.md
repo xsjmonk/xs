@@ -1,4 +1,4 @@
-<!-- revised_at: 2026-02-04 22:06:55 +0100 (Europe/Oslo) -->
+<!-- revised_at: 2026-02-06 16:34:50 +0100 (Europe/Oslo) -->
 # XS language — rules & patterns (living spec)
 
 > **Authoritative, consolidated specification** of the xs language.
@@ -510,7 +510,7 @@ RunPowershellFromMemory(command, shouldShowError)
 
 Important:
 
-* `clr.Ex.Powershell.Run(cmd)` may write directly to console; do not rely on return value for captured stdout.
+* `clr.Ex.Powershell.Run(cmd)` returns a result object (normal+error output) but may also write directly to console; do not rely on it for captured stdout.
 * When building multi-line PowerShell bodies, prefer `StringBuilder <<< >>>` + placeholder replace.
 
 ---
@@ -633,7 +633,9 @@ Anything else is **user-defined**, even if commonly used.
 
 #### Native PowerShell runner
 
-* `void clr.Ex.Powershell.Run(object cmd, object engines = null)`
+* `object clr.Ex.Powershell.Run(object cmd, object engines = null)`
+
+  * Returns a **result object** containing **normal output** and **error output**.
 
   * Executes PowerShell and **redirects output directly to the current CLR console**.
   * Intended for *side-effect* commands (logging, progress, provisioning).
