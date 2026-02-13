@@ -524,6 +524,11 @@ Important:
 
 ### User config (standard trio)
 
+Additional rule:
+* When holding loaded config in a `var`, **initialize it from `CreateConfigTpl(...)`** (two parameters) so the shape is known before calling `LoadUserConfig(...)`.
+* Do not use `var cfg = null` as a placeholder.
+
+
 * `GetUserConfigPath(fileName)`
 * `LoadUserConfig(fileName, templateObj)` — template must have full structure
 * `SaveUserConfig(fileName, obj)`
@@ -552,6 +557,10 @@ cfg = new { gcloud_application_auth_time: now.ToString(), last_claude_working_fo
 * Use **tabs** for indentation
 * Prefer explicit types (`int`, `string`, `bool`, `double`, `StringBuilder`) when possible
 * Use `var` for complex CLR types
+* **`var` must be initialized to a known object shape.** Never write `var cfg = null`.
+  * Rationale: `var` inference needs a concrete initializer so the compiler can lock object structure.
+  * For config objects, always initialize using `CreateConfigTpl(...)` (two parameters) rather than `null`.
+
 * Combine same‑type declarations:
 
 ```xs
