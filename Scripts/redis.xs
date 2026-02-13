@@ -254,7 +254,7 @@ func any(arr, p) { => clr.Dlinq.Any(arr, p) ; }
 
 void mark(color, content) {
 	clr.Ex.Console.Markup("[#" & color & "]"
-		& content.ToString().Replace("[", "").Replace("]", "").Replace("[/]", "")
+		& content.ReplStr("[", "").ReplStr("]", "").ReplStr("[/]", "")
 		& "[/]\r\n"
 	);
 }
