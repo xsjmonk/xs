@@ -766,6 +766,7 @@ Rationale:
 * Clearer intent: template → mutate → consume
 * Especially important for large multi-line templates
 
+```
 # XS extension methods
   ├─ Clipboard
   ├─ Json
@@ -774,6 +775,7 @@ Rationale:
   ├─ Http
   ├─ StatusConsole
   └─ TableConsole
+```
 
 This section documents **engine-provided internal methods** exposed to xs scripts.
 They behave like a **standard library** and are callable via `clr.Ex.*` unless otherwise noted.
@@ -959,15 +961,16 @@ Guideline:
 * Prefer `clr.Ex.Powershell.Run(...)` for side-effect commands and live console output.
 * Prefer `RunPowershellFromMemory(...)` when stdout is part of program logic.
 
----
 
 ---
 
 # Engine-provided native helpers
+```
   ├─ String / text helpers
   ├─ Regex helpers
   ├─ Enumerable helpers
   └─ Dlinq (dynamic LINQ) helpers
+```
 
 This section documents **engine-provided native helpers** implemented inside the xs runtime.
 They are **not user-defined** and are versioned together with the engine.
