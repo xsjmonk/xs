@@ -111,6 +111,7 @@ import Full.Namespace.OrType as Alias;
 ```
 
 * The alias replaces the **first segment after `clr.`**
+* **Aliases still require the `clr.` prefix** when referenced (`clr.Alias...`, not `Alias...`)
 
 Example:
 
@@ -213,6 +214,8 @@ Rules:
 
 * Content is literal
 * Prefer declaring free‑text blocks as `StringBuilder`
+* **Single-quote characters (`'`) are not supported inside xs string literals.**
+  * Workaround: compose via `chr(39)` + `&` (string concat), e.g. `"can" & chr(39) & "t"`.
 
 ---
 
@@ -467,9 +470,11 @@ done:
 ### Special operators
 
 * `..` — force CLR property/method resolution when type is unknown
-* `->` — computed property access
-
-  * Lower precedence than arithmetic / concat
+* `->` — computed property access (anonymous/dynamic property access)
+  * Left side is an **object**
+  * Right side is an **expression** (commonly a computed string property name)
+  * **Lowest precedence operator** — use parentheses when mixing with `&`, `+`, etc.
+    * Example: `"Name: " & (obj -> propName)`
 
 ---
 
@@ -537,6 +542,12 @@ Important:
 ---
 
 ## 13) Practical style guidelines
+
+* **Anonymous objects are immutable.** To "set" a property, create a new object and reassign:
+
+```xs
+cfg = new { gcloud_application_auth_time: now.ToString(), last_claude_working_folder: workingFolder };
+```
 
 * Use **tabs** for indentation
 * Prefer explicit types (`int`, `string`, `bool`, `double`, `StringBuilder`) when possible
