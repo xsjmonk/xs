@@ -403,13 +403,116 @@ func BuildProxyTpl() {
 
 * No `foreach`
 * No `using`
-* No `async / await`
+* No `async` (user-defined async methods are not supported)
+* `await` is supported **only** as a wrapper for **direct CLR native method calls** returning `Task`/`Task<T>`/`ValueTask`/`ValueTask<T>` (details below)
 * No delegates or events
 * No `out / ref / in / params`
 * No nullable types
 * No `throw`
 
 ---
+
+---
+
+## 7.1 `await` for CLR async methods (limited feature)
+
+XS does **not** implement a general async runtime. There is **no** user-defined `async` methods, no `await` over arbitrary expressions, and no task scheduling model in xs.
+
+XS supports `await` only as a **compile-time wrapper** that:
+
+1) Calls a **CLR native method** (static or instance) that returns an awaitable:
+   * `System.Threading.Tasks.Task`
+   * `System.Threading.Tasks.Task<T>`
+   * `System.Threading.Tasks.ValueTask`
+   * `System.Threading.Tasks.ValueTask<T>`
+
+2) Emits the synchronous await tail pattern:
+
+* `GetAwaiter()` → `GetResult()`
+
+This allows xs scripts to call common .NET async APIs (e.g. `WriteAllTextAsync`) while still running synchronously from the perspective of xs.
+
+### Allowed forms (must match exactly)
+
+`await` must be applied directly to a **CLR native method call node**:
+
+1) **CLR static method call**
+
+```xs
+var n = await clr.System.Threading.Tasks.Task.FromResult(123);
+```
+
+2) **CLR instance method call**
+
+```xs
+var h = clr.AwaitInterpreter_Test.AwaitTestHelper.Create();
+var x = await h.GetIntAsync(41);
+```
+
+### Disallowed forms (must throw at compile-time)
+
+These are rejected by design to keep parsing and binding stable:
+
+```xs
+var t = clr.System.Threading.Tasks.Task.FromResult(7);
+var x = await t;                     // NOT allowed: operand is a variable
+
+var x = await (clr.System.Threading.Tasks.Task.FromResult(7));  // NOT allowed: parenthesized operand
+
+func MakeTask() { => clr.System.Threading.Tasks.Task.FromResult(1); }
+var x = await MakeTask();            // NOT allowed: user-defined method
+
+var x = await (SomeExpr + 1);        // NOT allowed: general expression
+```
+
+> If you need grouping/precedence, parenthesize the **whole await expression**, not the operand:
+>
+> ```xs
+> var x = (await clr.System.Threading.Tasks.Task.FromResult(1)) + 2;   // OK
+> ```
+
+### Result semantics (stack consistency)
+
+* `await Task<T>` / `await ValueTask<T>` yields the `T` result.
+* `await Task` / `await ValueTask` is **void-like** and yields `null`.
+  * This is important for the `_` pop operator and statement stack balancing:
+    * `_ await someTaskReturningMethod();` is always valid.
+
+### Parameter and type handling (must be systematic)
+
+Because xs emits direct `call/callvirt` against `MethodInfo`, the compiler must adapt argument values to match the CLR signature **exactly**:
+
+* Value-type parameters:
+  * `unbox.any` when the value is stored as `object`
+  * numeric conversions must follow the same rules as existing CLR bound calls
+* Reference-type parameters:
+  * `castclass` when the value is `object`
+  * `box` when passing a value type to `object` / interface
+
+Unsupported (must fail at bind time):
+
+* `ref/out/in/params` parameters (xs does not support these modifiers)
+
+### Precedence notes
+
+`await` is a unary operator. When mixing with `+` or `&`, prefer parentheses:
+
+```xs
+var s = "A" & (await h.GetStringValueTaskAsync("B")) & "C";
+var n = (await h.GetIntAsync(41)) + 1;
+```
+
+### Practical example: calling .NET async I/O
+
+```xs
+func Run1(path, content) {
+	_ await clr.System.IO.File.WriteAllTextAsync(path.ToString(), content.ToString());
+	=> "OK";
+}
+
+=> Run1("d:\\t.txt", "hello");
+```
+
 
 ### `elseif` only
 
