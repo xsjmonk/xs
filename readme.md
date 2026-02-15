@@ -720,7 +720,7 @@ void test() {
   When parsing or external commands behave unexpectedly, default to *not performing destructive actions*.
 
 * **Avoid hidden control flow**.
-  Do not return from inside `catch`. Capture results and decide after structured error handling.
+  Returning from inside `catch` is supported; use it intentionally. For complex flows, capturing a result/flag and returning after the try/catch can still be clearer.
 
 * **Use stable primitives for text processing**.
   When language overload resolution is limited, prefer well-defined primitives (e.g., regex-based splitting) over ambiguous helpers.
@@ -789,7 +789,7 @@ Guideline:
 
 ### 16.5 Safe parsing pattern
 
-* Never return from inside `catch`.
+* Returning from inside `catch` is supported, but the flag-based pattern remains a safe default.
 * Pattern:
 
 ```xs
@@ -868,6 +868,33 @@ Rationale:
 * Preserves `StringBuilder` semantics
 * Clearer intent: template → mutate → consume
 * Especially important for large multi-line templates
+
+
+### 16.7.1 Lessons learned from recent debugging (practical)
+
+These are **real-world pitfalls** that showed up in recent xs scripting and engine work. Keep them in mind when writing or debugging scripts:
+
+* **Minimize to reproduce engine issues.**
+  When something fails, reduce to the smallest script that performs the exact CLR call (one constructor/method). Avoid `try` during diagnosis if you need the raw exception/stack.
+
+* **Constructor / overload binding can be the root cause.**
+  If `new SomeClrType(...)` fails, test alternative overloads and also test an API that performs the same work **without** user-side construction (e.g., `clr.File.ReadLines(path)` to validate file readability independent of `StreamReader` ctor binding).
+
+* **Overload ambiguity: numeric vs enum.**
+  In CLR binding, `int` literals can accidentally match enum parameters when multiple overloads share the same parameter count. Prefer APIs/signatures that avoid ambiguous overloads, and add regression tests around known hotspots (e.g., `string.IndexOf(..., int)` vs `string.IndexOf(..., StringComparison)`).
+
+* **Large-file moves: avoid “rewrite the remainder each line”.**
+  For huge CSVs, do not create a temp copy of the remaining source per iteration. Prefer:
+  1) stream source once (skip header),
+  2) append each line to destination,
+  3) checkpoint progress (offset/state),
+  4) rewrite source once at the end (e.g., header-only) if needed.
+
+* **No `long` keyword in xs.**
+  Use `clr.System.Convert.ToInt64(0)` (and `clr.System.Int64.Parse(...)` when needed) for 64-bit offsets or counters.
+
+* **Top-level (main program) has stricter return rules.**
+  If early-return is needed, either wrap logic into a `func/void` or use `goto done` + a single `=>` at the end of the top-level region.
 
 ```
 # XS extension methods
