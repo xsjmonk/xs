@@ -1243,3 +1243,56 @@ if(clr.Dlinq.Any(items, "it.Status == "Ready"")) {
 	mark("5FD7AF", "Ready items exist");
 }
 ```
+
+
+---
+
+## Numeric Types Update (Long Support)
+
+XS now supports **long (Int64)** as a first‑class numeric type.
+
+### Supported numeric types
+- `int`   → 32‑bit integer  
+- `long`  → 64‑bit integer  
+- `double` → floating point  
+
+### Long literals
+A long literal uses suffix `l`:
+
+```
+var a = 0l;
+var b = 100l;
+```
+
+Rules:
+- lowercase `l` only  
+- no space between number and suffix  
+- `100l` is parsed as a single literal token  
+- `var a = 0l;` infers `a` as `long`
+
+### Numeric promotion
+Promotion precedence:
+
+```
+double > long > int
+```
+
+Examples:
+
+```
+int + int      → int
+int + long     → long
+long + int     → long
+long + long    → long
+long + double  → double
+double + long  → double
+```
+
+Unary:
+```
+- (long) → long
+```
+
+### CLR interop
+When a CLR method returns `Int64`, XS treats the value as `long` automatically.
+
