@@ -397,7 +397,7 @@ func BuildProxyTpl() {
 
 * `if / elseif / else`
 * `for`, `while`, `do while`
-* `try { } catch { }`
+* `try { } catch { <one-or-more statements> }`  (empty catch body `catch {}` is not supported)
 * labels + `goto`
 * `break`, `continue`
 
@@ -528,6 +528,14 @@ func Run1(path, content) {
 ## 8) Returns & main‑program limits
 
 ### func / void
+
+* Early `return` **is allowed**
+* Early `return` **is allowed inside `catch`**
+* **Empty catch body is not supported**: `catch {}` is invalid
+* `catch` cannot contain `goto`
+* Variables may be declared just-in-time when first used (no need to predeclare at top)
+
+Rule of thumb: `return` is allowed in both `try` and `catch`; keep `catch` blocks non-empty and avoid `goto` inside `try`/`catch`.
 
 * Early `return` **is allowed**
 * Early `return` **is allowed inside `catch`** (engine update)
