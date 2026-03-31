@@ -1,0 +1,1143 @@
+COMPILER Formula
+
+CHARACTERS
+letter = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz".
+digit = "0123456789".
+hexDigit = digit + "ABCDEFabcdef".
+notDigit = ANY - digit.
+control = "\r\n\t".
+space = ' ' + '\t'.
+backslash = '\\'.
+stringCh = ANY - '"' - control - backslash.
+cr = '\r'.
+lf = '\n'.
+tab = '\t'.
+eol = '\u000a'.
+anyButQuote = ANY - '"'.
+newLine = cr + lf + eol.
+char = ANY - "'" - '\\' - newLine.
+verbatimStringChar = ANY - '"'.
+regularStringChar = ANY - '"' - '\\' - newLine.
+notNewLine = ANY - newLine.
+ws = " " + tab + '\u000b' + '\u000c'.
+hanziUnicode = '\u4e00'.. '\u9fa5'.
+hanzi = hanziUnicode - ' = ' - '>'.
+printable =
+'\u0020'.. '\u007e' +
+'\u00a0'.. '\u00ff' +
+'\u0100'.. '\u017f' +
+'\u0180'.. '\u024f' +
+'\u0370'.. '\u03ff' +
+'\u0400'.. '\u04ff' +
+'\u0590'.. '\u05ff' +
+'\u0600'.. '\u06ff' +
+'\u0900'.. '\u097f' +
+'\u3040'.. '\u30ff' +
+'\u4e00'.. '\u9fff' +
+'\uac00'.. '\ud7af' +
+'\u2000'.. '\u206f' +
+'\u20a0'.. '\u27bf' +
+'\u3000'.. '\u303f' +
+'\u0009'.
+freeTextChars = ANY - eol.
+
+TOKENS
+ident = ( "_" | letter | hanziUnicode) { "_" | letter | digit | hanziUnicode}.
+ignoreAbleIdent = "_".
+
+number = digit {digit}.
+double = (digit {digit} "." digit {digit}) | (digit {digit} "d").
+longNumber = digit {digit} "l".
+
+freeTextStart = "<<<".
+freeTextEnd = ">>>".
+stringCon = ('"' { stringCh | backslash printable} '"')
+| ( "@\"" { verbatimStringChar | "\"\""} "\"")
+| ( "<<<" { freeTextChars} ">>>")
+.
+
+if = "if".
+else = "else".
+goto = "goto".
+thisKeywords = "this".
+elseif = "elseif".
+objectKeywords = "object".
+varKeywords = "var".
+StringBuilderKeywords = "StringBuilder".
+intKeywords = "int".
+doubleKeywords = "double".
+clr = "clr".
+boolKeywords = "bool".
+nowKeywords = "now".
+dateKeywords = "date".
+stringKeywords = "string".
+nullKeywords = "null".
+falseKeywords = "false".
+trueKeywords = "true".
+returnKeywords = "return".
+retKeywords = "ret".
+urlKeywords = "url".
+continueKey = "continue".
+breakKey = "break".
+clientBags = "client." ( letter) { "-" | "_" | letter | digit}.
+amp = "&".
+doubleAmp = "&&".
+doubleOr = " | | ".
+andassgn = "& = ".
+assgn = " = ".
+colon = ":".
+comma = ",".
+dec = "--".
+divassgn = "/ = ".
+div = "/".
+slash = "\\".
+dot = ".".
+dblcolon = "::".
+eq = " = = ".
+gt = ">".
+gteq = "> = ".
+inc = "++".
+lbrace = "{".
+lpar = "(".
+lshassgn = "<< = ".
+lt = "<".
+le = "< = ".
+ltlt = "<<".
+minus = "-".
+minusassgn = "- = ".
+modassgn = "% = ".
+neq = "! = ".
+not = "!".
+plus = "+".
+plusassgn = "+ = ".
+question = "?".
+rbrace = "}".
+rpar = ")".
+scolon = ";".
+tilde = "~".
+times = "*".
+timesassgn = "* = ".
+while = "while".
+xorassgn = "^ = ".
+downloadassgn = "<-".
+downloadassgnWC = "<+".
+global = "global".
+new = "new".
+SiteConfigKeywords = "SiteConfig".
+load = "load".
+lbrack = "[".
+rbrack = "]".
+bar = " | ".
+importKeywords = "import".
+asKeywords = "as".
+tryKeywords = "try".
+catchKeywords = "catch".
+doKeywords = "do".
+forKeywords = "for".
+FuncKeywords = "Func".
+funcKeywords = "func".
+voidKeywords = "void".
+SiteKeywords = "Site".
+configKeywords = "config".
+longKeywords = "long".
+retOperator = " = >".
+
+COMMENTS FROM "" NESTED
+COMMENTS FROM "
+
+IGNORE cr + lf + tab
+
+PRODUCTIONS
+
+Formula
+= IF (this.Mode = = Interpreter.Parser.CompileMode.Block)
+( { Import [";"]}
+AllMethod<out stmt>
+{ AllMethod<out stmt>
+}
+)
+|
+( { Import [";"]}
+{ VoidMethod<out stmt>
+| FuncMethod<out stmt>
+}
+(
+ReturnStatements<out stmt>
+)
+{ VoidMethod<out stmt>
+| FuncMethod<out stmt>
+}
+)
+EOF
+.
+
+Import
+= importKeywords Ident<out s>
+{
+ANY
+}
+asKeywords Ident<out s>
+.
+
+AllMethod<out Statement stmt>
+= Site<out stmt>
+| FuncMethod<out stmt>
+| VoidMethod<out stmt>
+.
+
+ReturnStatements<out Statement block> =
+(
+( Stmt<out stmt>
+{
+Stmt<out stmt>
+}
+[
+ReturnStmt<out stmt>
+[";"]
+]
+
+)
+| ( ReturnStmt<out stmt> [";"]
+)
+)
+.
+
+FuncReturnStatements<out Statement block>
+
+=
+{
+FuncVoidNonReturnStmt<out stmt>
+}
+ReturnStmt<out stmt>
+[";"]
+
+.
+
+FuncVoidNonReturnStmt<out Statement stmt>
+=
+(
+IF (Peek(1).val = = ":") DeclareGoto<out stmt>
+| IF (IsAssignment()) AssignStmt<out stmt> [";"]
+| (
+IfStmt<out stmt>
+| ForStmt<out stmt>
+| WhileStmt<out stmt>
+| DoWhileStmt<out stmt>
+| ExprStmt<out stmt> [";"]
+| VarDecStmt<out stmt> [";"]
+| gotoInvoke<out stmt> [";"]
+| LoadStmt<out stmt>
+)
+)
+| TryStmt<out stmt>
+.
+
+Stmt<out Statement stmt>
+=
+(
+IF (Peek(1).val = = ":") DeclareGoto<out stmt>
+| IF (IsAssignment()) AssignStmt<out stmt> [";"]
+| (
+IfStmt<out stmt>
+| ForStmt<out stmt>
+| WhileStmt<out stmt>
+| DoWhileStmt<out stmt>
+| ExprStmt<out stmt> [";"]
+| VarDecStmt<out stmt> [";"]
+| gotoInvoke<out stmt> [";"]
+| LoadStmt<out stmt>
+)
+)
+| TryStmt<out stmt>
+.
+
+TryReturnStmt<out Statement stmt>
+=
+(returnKeywords | retOperator | retKeywords)
+(
+";"
+| Expr<out e>
+)
+.
+
+TryInnerStmt<out Statement stmt>
+=
+IF (Peek(1).val = = ":") DeclareGoto<out stmt>
+| IF (IsAssignment()) AssignStmt<out stmt> [";"]
+| IfStmt<out stmt>
+| ForStmt<out stmt>
+| WhileStmt<out stmt>
+| DoWhileStmt<out stmt>
+| VarDecStmt<out stmt> [";"]
+| ExprStmt<out stmt> [";"]
+| TryStmt<out stmt>
+| TryReturnStmt<out stmt> [";"]
+.
+
+CatchInnerStmt<out Statement stmt>
+=
+IF (Peek(1).val = = ":") DeclareGoto<out stmt>
+| IF (IsAssignment()) AssignStmt<out stmt> [";"]
+| IfStmt<out stmt>
+| ForStmt<out stmt>
+| WhileStmt<out stmt>
+| DoWhileStmt<out stmt>
+| VarDecStmt<out stmt> [";"]
+| ExprStmt<out stmt> [";"]
+| gotoInvoke<out stmt> [";"]
+| TryStmt<out stmt>
+| TryReturnStmt<out stmt> [";"]
+.
+
+TryStmt<out Statement stmt>
+=
+tryKeywords "{"
+TryInnerStmt<out stmt>
+{ TryInnerStmt<out stmt>}
+"}" catchKeywords "{"
+{ CatchInnerStmt<out stmt>}
+"}"
+.
+
+LoopBody<out Statement body>
+=
+LoopBracedBody<out body>
+| ContinueInvoke<out body> [";"]
+| BreakInvoke<out body> [";"]
+| Stmt<out body>
+.
+
+LoopBracedBody<out Statement body>
+=
+"{"
+(
+IF(this.Mode = = Interpreter.Parser.CompileMode.Func) FuncBlockInner<out body>
+| IF(this.Mode = = Interpreter.Parser.CompileMode.Void) VoidBlockInner<out body>
+| BlockIfInner<out body>
+)
+"}"
+.
+
+BlockItem<out Statement stmt>
+=
+IF(p1.kind = = _ignoreAbleIdent)
+ignoreAbleIdent Expr<out e>
+[";"]
+|
+IF(p1.kind = = _ident && Peek(2).val = = ":")
+DeclareGoto<out stmt>
+|
+IF(IsAssignment()) AssignStmt<out stmt> [";"]
+|
+IfStmt<out stmt>
+|
+ForStmt<out stmt>
+|
+WhileStmt<out stmt>
+|
+DoWhileStmt<out stmt>
+|
+TryStmt<out stmt>
+|
+ContinueInvoke<out stmt> [";"]
+|
+BreakInvoke<out stmt> [";"]
+|
+gotoInvoke<out stmt> [";"]
+|
+LoadStmt<out stmt>
+|
+IF(Peek(1).val = = "." | | Peek(1).val = = "..")
+ExprStmt<out stmt>
+
+";"
+|
+IF(IsMethod()) MethodInvocation<out e> [";"]
+|
+VarDecStmt<out stmt> [";"]
+|
+ExprStmt<out stmt> [";"]
+.
+
+FuncBlockInner<out Statement block>
+
+=
+{
+(
+IF(p1.kind = = _ignoreAbleIdent)
+ignoreAbleIdent Expr<out e>
+[";"]
+|
+IF(p1.kind = = _ident && Peek(2).val = = ":")
+DeclareGoto<out stmt>
+|
+IF(IsAssignment())
+AssignStmt<out stmt> [";"]
+|
+ReturnStmt<out stmt> [";"]
+|
+IfStmt<out stmt>
+|
+ForStmt<out stmt>
+|
+WhileStmt<out stmt>
+|
+DoWhileStmt<out stmt>
+|
+TryStmt<out stmt>
+|
+ContinueInvoke<out stmt> [";"]
+|
+BreakInvoke<out stmt> [";"]
+|
+gotoInvoke<out stmt> [";"]
+|
+LoadStmt<out stmt>
+|
+IF(Peek(1).val = = "." | | Peek(1).val = = "..")
+ExprStmt<out stmt>
+
+";"
+|
+IF(IsMethod()) MethodInvocation<out e> [";"]
+|
+VarDecStmt<out stmt> [";"]
+|
+ExprStmt<out stmt> [";"]
+)
+
+}
+
+.
+
+FuncBlock<out Statement block> =
+(
+"{"
+[
+(
+(
+BlockItem<out stmt>
+{
+BlockItem<out stmt>
+}
+[
+ReturnStmt<out stmt>
+[";"]
+]
+)
+|
+(
+ReturnStmt<out stmt>
+[";"]
+)
+)
+]
+"}"
+)
+.
+
+VoidBlockInner<out Statement block>
+
+=
+{
+(
+IF(p1.kind = = _ignoreAbleIdent)
+ignoreAbleIdent Expr<out e>
+[";"]
+|
+IF(p1.kind = = _ident && Peek(2).val = = ":")
+DeclareGoto<out stmt>
+|
+IF(IsAssignment())
+AssignStmt<out stmt> [";"]
+|
+VoidReturnStmt<out stmt> [";"]
+|
+IfStmt<out stmt>
+|
+ForStmt<out stmt>
+|
+WhileStmt<out stmt>
+|
+DoWhileStmt<out stmt>
+|
+TryStmt<out stmt>
+|
+ContinueInvoke<out stmt> [";"]
+|
+BreakInvoke<out stmt> [";"]
+|
+gotoInvoke<out stmt> [";"]
+|
+LoadStmt<out stmt>
+|
+IF(Peek(1).val = = "." | | Peek(1).val = = "..")
+ExprStmt<out stmt>
+
+";"
+|
+IF(IsMethod()) MethodInvocation<out e> [";"]
+|
+VarDecStmt<out stmt> [";"]
+|
+ExprStmt<out stmt> [";"]
+)
+
+}
+
+.
+
+VoidBlock<out Statement block> =
+(
+"{"
+[
+(
+(
+BlockItem<out stmt>
+{
+BlockItem<out stmt>
+}
+[
+VoidReturnStmt<out stmt>
+[";"]
+]
+)
+|
+(
+VoidReturnStmt<out stmt>
+[";"]
+)
+)
+]
+"}"
+)
+.
+
+VoidReturnStmt<out Statement stmt>
+=
+(returnKeywords | retKeywords)
+.
+
+LoadStmt<out Statement stmt>
+= load
+ANY
+{ ANY
+} ";"
+.
+
+DeclareGoto<out Statement stmt>
+= ident
+colon
+.
+
+gotoInvoke<out Statement e>
+= goto
+ident
+.
+
+ContinueInvoke<out Statement e>
+= continueKey
+.
+
+BreakInvoke<out Statement e>
+= breakKey
+.
+
+WhileStmt<out Statement stmt>
+=
+while "(" Expr<out e>
+")"
+LoopBody<out body>
+
+.
+
+DoWhileStmt<out Statement stmt>
+=
+doKeywords
+"{"
+Stmt<out stmt>
+{ Stmt<out stmt>
+}
+"}"
+while "(" Expr<out e>
+")"
+[";"]
+.
+
+ForStmt<out Statement stmtFor>
+=
+forKeywords "(" [VarDecStmt<out stmtDecl> | AssignStmt<out stmtDecl>] ";"
+Expr<out eCondition> ";" [AssignStmt<out stmtAsgn>] ")"
+
+LoopBody<out body>
+
+.
+
+FuncMethod<out Statement stmt>
+=
+(FuncKeywords | funcKeywords)
+[ intKeywords
+| stringKeywords
+| doubleKeywords
+| longKeywords
+| boolKeywords
+| objectKeywords
+| StringBuilderKeywords
+]
+Ident<out methodName>
+"("
+[Ident<out tmpParameter>
+{ "," Ident<out tmpParameter>
+}]
+")"
+"{" (
+FuncReturnStatements<out stmt>
+)
+"}"
+.
+
+VoidMethod<out Statement stmt>
+=
+voidKeywords
+Ident<out methodName>
+"("
+[Ident<out tmpParameter>
+{ "," Ident<out tmpParameter>
+}]
+")"
+"{"
+(
+Stmt<out stmt>
+{ Stmt<out stmt>
+}
+)
+"}"
+.
+
+Site<out Statement stmt>
+= SiteKeywords Ident<out methodName>
+"{"
+{ SiteOutBlockMethod<out stmt, out isOut>
+
+}
+"}"
+.
+
+SiteOutBlockMethod<out Statement stmt, out bool IsOut>
+
+=
+[configKeywords
+]
+Ident<out blockName>
+[ "." IdentHyphen<out blockName2>
+{ IdentHyphen<out tmp>
+}
+]
+( " = "
+(
+ExprStmt<out stmtTmp> [";"]
+| ( "{"
+ReturnStatements<out stmtTmp>
+"}"
+)
+)
+)
+.
+
+IdentHyphen<out string s>
+= ident
+| "-"
+.
+
+AssignStmt<out Statement stmt>
+= IF (peek1.kind = = _inc | | peek1.kind = = _dec) SelfIncreaseDecrease<out stmt>
+| LocalAssignStmt<out stmt>
+.
+
+IfReturnBody<out Statement s>
+
+=
+IF(this.Mode = = Interpreter.Parser.CompileMode.Func)
+ReturnStmt<out s> [";"]
+|
+IF(this.Mode = = Interpreter.Parser.CompileMode.Void)
+VoidReturnStmt<out s> [";"]
+|
+(retOperator | returnKeywords | retKeywords)
+
+.
+
+IfBody<out Statement s>
+=
+
+IF(la.kind = = _lbrace && this.Mode = = Interpreter.Parser.CompileMode.Func) FuncBlock<out s>
+| IF(la.kind = = _lbrace && this.Mode = = Interpreter.Parser.CompileMode.Void) VoidBlock<out s>
+| BlockIf<out s>
+
+| IF(IsAssignment()) AssignStmt<out s> [";"]
+| ExprStmt<out s> [";"]
+| VarDecStmt<out s> [";"]
+| gotoInvoke<out s> [";"]
+| ContinueInvoke<out s> [";"]
+| BreakInvoke<out s> [";"]
+| TryStmt<out s>
+
+| IfStmt<out s>
+| IfReturnBody<out s>
+.
+
+IfTail<ref IfElse cur>
+
+=
+{
+elseif "(" Expr<out eElseIf> ")"
+IfBody<out sElseIf>
+
+}
+[
+else
+IfBody<out tmpElse>
+
+]
+.
+
+IfStmt<out Statement stmtIF>
+
+=
+if "(" Expr<out e> ")"
+IfBody<out sIf>
+
+IfTail<ref cur>
+
+.
+
+BlockIf<out Statement block>
+= "{"
+{
+(
+gotoInvoke<out stmt> [";"]
+| ContinueInvoke<out stmt> [";"]
+| BreakInvoke<out stmt> [";"]
+| ForStmt<out stmt>
+| IfStmt<out stmt>
+| WhileStmt<out stmt>
+| DoWhileStmt<out stmt>
+| TryStmt<out stmt>
+| VarDecStmt<out stmt> [";"]
+| IF(Peek(1).val = = ":") DeclareGoto<out stmt>
+| IF(IsAssignment()) AssignStmt<out stmt> [";"]
+| ExprStmt<out stmt> [";"]
+)
+
+}
+"}"
+.
+
+BlockIfInner<out Statement block>
+=
+{
+(
+gotoInvoke<out stmt> [";"]
+| ContinueInvoke<out stmt> [";"]
+| BreakInvoke<out stmt> [";"]
+| ForStmt<out stmt>
+| IfStmt<out stmt>
+| WhileStmt<out stmt>
+| DoWhileStmt<out stmt>
+| TryStmt<out stmt>
+| VarDecStmt<out stmt> [";"]
+| IF(Peek(1).val = = ":") DeclareGoto<out stmt>
+| IF(IsAssignment()) AssignStmt<out stmt> [";"]
+| ExprStmt<out stmt> [";"]
+)
+
+}
+
+.
+
+VarDecStmt<out Statement stmt>
+= VarDec<out e>
+.
+
+ReturnStmt<out Statement stmt>
+=
+(returnKeywords | retOperator | retKeywords)
+Expr<out e>
+.
+
+VarDec<out Expression e>
+=
+(
+Typ<out declaredType>
+VarDesc<out t2v_first, out newType_first, out var typeConversion>
+
+{ ","
+VarDesc<out t2v_consecutive, out newType_consecutive, out typeConversion>
+}
+) | (
+ignoreAbleIdent
+[" = "] Expr<out var rhs>
+)
+.
+
+Typ<out Type ty>
+= "int"
+| "bool"
+| "string"
+| "double"
+| longKeywords
+| objectKeywords
+| varKeywords
+| (StringBuilderKeywords)
+.
+
+VarDesc<out T2V t2v, out Type newType, out Type typeConversion>
+= (
+Ident<out declaredVar>
+
+| ignoreAbleIdent
+)
+[
+( " = "
+| ( downloadassgn
+| downloadassgnWC
+)
+)
+
+Expr<out rhs>
+
+]
+.
+
+LocalAssignStmt<out Statement asg>
+
+=
+( ident
+[ lbrack Expr<out subscriptIndex> rbrack]
+| (
+lbrack ident
+rbrack
+)
+| ( "@" ident
+)
+| ( "clr"
+"." ident
+)
+)
+
+{"." ident
+}
+
+( ' = '
+| ( downloadassgn
+| downloadassgnWC
+)
+)
+Expr<out rhs>
+.
+
+SelfIncreaseDecrease<out Statement asg>
+=
+( ident
+| ( "@"
+ident
+)
+| ( lbrack ident
+rbrack
+)
+)
+( inc
+| dec
+)
+.
+
+Ident<out String name>
+= ident
+.
+
+ExprStmt<out Statement stmt>
+=
+Expr<out e>
+.
+
+Expr<out Expression e>
+=
+ConExpr<out left>
+{ "->" ConExpr<out right>}
+['?' ConExpr<out e2>
+':' Expr<out e3>
+]
+
+.
+
+ConExpr<out Expression e>
+= LogOrExpr<out e>.
+
+LogOrExpr<out Expression e>
+= LogAndExp<out e>
+{ " | | " LogAndExp<out e2>
+}
+.
+
+LogAndExp<out Expression e>
+= EqualExp<out e>
+{ "&&" EqualExp<out e2>
+}
+.
+
+EqualExp<out Expression e>
+= RelationExp<out e>
+{ ( " = = "
+| "! = "
+)
+RelationExp<out e2>
+}
+.
+
+RelationExp<out Expression e>
+= AddExp<out e>
+{ (
+"<"
+| ">"
+| "< = "
+| "> = "
+)
+AddExp<out e2>
+}
+.
+
+AddExp<out Expression e>
+= MultExp<out e>
+{
+(
+"+"
+| "-"
+| "+i"
+| "-i"
+)
+MultExp<out e2>
+}
+.
+
+MultExp<out Expression e>
+= StrConcatExp<out e>
+{
+( "*"
+| "/"
+| "%"
+| " | "
+| "*i"
+| "\\"
+)
+StrConcatExp<out e2>
+}
+.
+
+StrConcatExp<out Expression e>
+= UnaryExp<out e>
+{
+
+"&"
+UnaryExp<out e2>
+}
+.
+
+UnaryExp<out Expression e>
+= "-" UnaryExp<out eUnary>
+| not UnaryExp<out eUnary>
+| IF (la.kind = = _ident && la.val ! = null && la.val = = "await") ident Primary<out eUnary>
+| Primary<out e>
+.
+
+PrimaryGlobalField<out Expression e>
+=
+"@" ident
+.
+
+PrimaryDictionary<out Expression e>
+=
+lbrack ident
+rbrack
+.
+
+PrimaryLeftVal<out Expression e, out Type typOfIdent>
+=
+ident
+.
+
+Primary<out Expression e>
+=
+
+[IF (la.kind = = _lpar && IsTypeConversion(Peek(1).kind)) (
+IF (TypeConversionKeywords[Peek(1).kind])"(" Typ<out typeConversion> ")"
+| ("(" clr "."
+ident
+{ ANY
+}
+")")
+)]
+
+(
+(
+( "(" Expr<out e> ")")
+| (
+(
+(
+IF (IsDictionaryAccess()) PrimaryDictionary<out e>
+
+| ArrayLiteral<out e>
+)
+| PrimaryGlobalField<out e>
+| ( IF (IsMethod()) MethodInvocation<out e>
+| PrimaryLeftVal<out e, out typOfIdent>
+)
+| Constant<out e>
+| ( clr
+"." Ident<out tmpName>
+{ "."
+( IF(!IsClrMethod())
+( ident
+)
+|
+( ident
+"("
+[
+ParamList<out clrParamList>
+]
+")"
+)
+)
+}
+)
+)
+)
+
+)
+
+(
+
+{
+ElementAt<ref e> |
+(
+( "."
+| ".."
+)
+Ident<out name>
+[ "("
+[
+ParamList<out parList>
+]
+")"
+]
+
+)
+}
+)
+)
+.
+
+ElementAt<ref Expression e>
+=
+lbrack
+Expr<out eIndex>
+rbrack
+.
+
+Constant<out Expression e>
+=
+String<out s>
+| Integer<out n, out e>
+| Long<out l, out e>
+| Double<out d>
+| thisKeywords
+| SiteConfigKeywords
+| nullKeywords
+| falseKeywords
+| trueKeywords
+| urlKeywords
+| clientBags
+| DateTime<out e>
+| New<out e>
+.
+
+DateTime<out Expression e>
+= nowKeywords
+| dateKeywords
+.
+
+Integer<out int val, out Expression e>
+= number
+.
+
+Double<out double val>
+= double
+.
+
+Long<out long val, out Expression e>
+= longNumber
+.
+
+String<out string val>
+= ( stringCon
+)
+
+.
+
+New<out Expression e>
+= new (
+(
+clr "." ident
+{ ANY
+}
+
+"("
+[
+ParamList<out param>
+]
+")"
+)
+| (
+"{"
+ident
+[" = " | ":"]
+Expr<out exprPropertyVal>
+
+"}"
+)
+)
+.
+
+ArrayLiteral<out Expression e>
+= lbrack
+[ ArrayElements<out items>
+]
+rbrack
+.
+
+ArrayElements
+= Expr<out parameter>
+
+.
+
+MethodInvocation<out Expression e>
+=
+[ ( "global"
+| "system"
+) "."
+]
+Ident<out methodName>
+"("
+[
+ParamList<out parList>
+]
+")"
+.
+
+ParamList
+
+= Expr<out parameter>
+{ "," Expr<out parameter>
+}
+.
+
+END Formula.
