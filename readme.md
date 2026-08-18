@@ -218,8 +218,9 @@ Rules:
 
 * Content is literal
 * Prefer declaring free‑text blocks as `StringBuilder`
-* **Single-quote characters (`'`) are not supported inside xs string literals.**
-  * Workaround: compose via `chr(39)` + `&` (string concat), e.g. `"can" & chr(39) & "t"`.
+* **Single-quote characters (`'`) ARE supported inside xs string literals.**
+  * Source of truth: grammar `stringCh = ANY - '"' - control - backslash` does not exclude `'`; production crawler scripts use it inside regexes (e.g. `[\"\"']`).
+  * A portable fallback remains `chr(39)` + `&` (string concat), e.g. `"can" & chr(39) & "t"`.
 
 ---
 
@@ -766,12 +767,11 @@ Items here should remain **technology-agnostic** and broadly reusable.
 
 ### 16.3 PowerShell execution (native vs user-defined)
 
-**Important distinction:** only methods under `clr.Ex.*` are **native internal methods**.
-Anything else is **user-defined**, even if commonly used.
+**Important distinction:** `clr.Ex.*` methods are **engine-provided extension methods** — they live in external extension assemblies loaded at engine boot (`ExtensionConsole`, `ClrMiniProgram`, `ClrDotNet`), not user-defined xs. Anything else (even commonly used helpers such as `RunPowershellFromMemory`) is **user-defined**.
 
 #### Native PowerShell runner
 
-* `object clr.Ex.Powershell.Run(object cmd, object engines = null)`
+* `ProcessExecutionResult clr.Ex.Powershell.Run(object cmd, object engines = null)`
 
   * Returns a **result object** containing **normal output** and **error output**.
 
@@ -1109,29 +1109,35 @@ Implemented in `StringLibrary`.
 
 Notes:
 
-* `ReplStr` → plain substring replace (non-regex)
+* `ReplStr` → plain substring replace (non-regex, ordinal, case-sensitive)
 * `Replace` → regex replace
-* `IsEmpty(x)` → `IsNullOrWhiteSpace(x?.ToString())`
+* `IsEmpty(x)` → string: `IsNullOrWhiteSpace`; `ICollection`: `Count == 0`; `IEnumerable`: no elements; otherwise `IsNullOrWhiteSpace(x?.ToString())`
 
 ### API
+
+Registered in `FuncN` (callable directly / extension-style; regex-family methods get `(caller, fieldName)` injected by the compiler):
 
 * `bool IsEmpty(x)`
 * `bool IsNullOrEmpty(x)`
 * `bool IsNullOrWhiteSpace(x)`
 * `string ReplStr(s, textToReplace, replaceBy)`
-* `string SubStr(s, index, length)` — `length = -1` → to end
+* `string Substr(s, index, length)` — `length = -1` → to end
 * `string Trim(s)`
-* `string LTrim(s, prefix)`
-* `string RTrim(s, suffix)`
-* `int Len(s)`
 * `string chr(intCodePoint)`
+* `string Str(x)` — object-to-string wrapper (`.str()`)
+* `void Trace(file, content)` — append to a trace file (a `SiteConfig` argument is injected by the compiler)
+* `void SetProperty(obj, name, val)` — dynamic property set
+* `string MatchTag(content, tagRegex)` — returns the **entire block** from the matched start tag to its paired end tag (nested tags/comments/quoted attributes handled)
+* `List<string> MatchTags(content, tagRegex)` — all matched blocks as a list
+
+**Not callable from xs** (implemented in `StringLibrary` but NOT registered in `FuncN` — commented out in `Expression.MethodInvoke.cs`): `LTrim`, `RTrim`, `Len`.
 
 ### Examples
 
 ```xs
 if(path.IsEmpty()) { ... }
 name = name.ReplStr("[", "").ReplStr("]", "")
-part = s.SubStr(0, 3)
+part = s.Substr(0, 3)
 ```
 
 ---
@@ -1223,7 +1229,9 @@ Characteristics:
 * `ArrayList clr.Dlinq.TakeWhile(object source, string predicate)`
 * `int clr.Dlinq.Count(object source, string predicate)`
 * `bool clr.Dlinq.Any(object source, string predicate)`
-* `ArrayList clr.Dlinq.Reverse(object source)`
+* `object clr.Dlinq.Reverse(object source, string predicate)`
+* `ArrayList clr.Dlinq.ToArrayList(object query)`
+* `void clr.Dlinq.Dump()`
 * `object clr.Dlinq.Max(object source, string projection)`
 * `object clr.Dlinq.Min(object source, string projection)`
 * `double clr.Dlinq.Average(object source, string predicate)`

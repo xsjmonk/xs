@@ -1,1143 +1,1967 @@
+using System.Collections.Generic;
+using System.Collections;
+using System.Reflection;
+using System.Linq;
+using ExprList = System.Collections.Generic.List<Interpreter.Expression>;
+
+
 COMPILER Formula
 
 CHARACTERS
-letter = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz".
-digit = "0123456789".
-hexDigit = digit + "ABCDEFabcdef".
-notDigit = ANY - digit.
-control = "\r\n\t".
-space = ' ' + '\t'.
-backslash = '\\'.
-stringCh = ANY - '"' - control - backslash.
-cr = '\r'.
-lf = '\n'.
-tab = '\t'.
-eol = '\u000a'.
-anyButQuote = ANY - '"'.
-newLine = cr + lf + eol.
-char = ANY - "'" - '\\' - newLine.
-verbatimStringChar = ANY - '"'.
-regularStringChar = ANY - '"' - '\\' - newLine.
-notNewLine = ANY - newLine.
-ws = " " + tab + '\u000b' + '\u000c'.
-hanziUnicode = '\u4e00'.. '\u9fa5'.
-hanzi = hanziUnicode - ' = ' - '>'.
-printable =
-'\u0020'.. '\u007e' +
-'\u00a0'.. '\u00ff' +
-'\u0100'.. '\u017f' +
-'\u0180'.. '\u024f' +
-'\u0370'.. '\u03ff' +
-'\u0400'.. '\u04ff' +
-'\u0590'.. '\u05ff' +
-'\u0600'.. '\u06ff' +
-'\u0900'.. '\u097f' +
-'\u3040'.. '\u30ff' +
-'\u4e00'.. '\u9fff' +
-'\uac00'.. '\ud7af' +
-'\u2000'.. '\u206f' +
-'\u20a0'.. '\u27bf' +
-'\u3000'.. '\u303f' +
-'\u0009'.
-freeTextChars = ANY - eol.
+	letter								= "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz" .
+	digit									= "0123456789" .
+	hexDigit							= digit + "ABCDEFabcdef" .
+	notDigit							= ANY - digit.
+	control								= "\r\n\t" .
+	space									= ' ' + '\t'.
+	backslash							= '\\' .
+	stringCh							= ANY - '"' - control - backslash .
+	cr										= '\r'.
+	lf										= '\n'.
+	tab										= '\t'.
+	eol										= '\u000a'. 
+	anyButQuote						= ANY - '"' .
+	newLine								= cr + lf + eol. /* Line separator character	(U+2028) + Paragraph separator character	(U+2029) */
+	char									= ANY - "'" - '\\' - newLine.
+	verbatimStringChar		= ANY - '"'.
+	regularStringChar			= ANY - '"' - '\\' - newLine.
+	notNewLine						= ANY - newLine .
+	ws										= " " + tab + '\u000b' + '\u000c'. /* Any character with Unicode class Zs */
+	hanziUnicode					= '\u4e00' .. '\u9fa5' .
+	hanzi									= hanziUnicode - '=' - '>' .
+  printable =
+    '\u0020' .. '\u007e' +    /* ASCII printable characters (space to ~) */
+    '\u00a0' .. '\u00ff' +    /* Latin-1 Supplement (?, ¡é, ?, etc.) */
+    '\u0100' .. '\u017f' +    /* Latin Extended-A */
+    '\u0180' .. '\u024f' +    /* Latin Extended-B */
+    '\u0370' .. '\u03ff' +    /* Greek and Coptic */
+    '\u0400' .. '\u04ff' +    /* Cyrillic */
+    '\u0590' .. '\u05ff' +    /* Hebrew */
+    '\u0600' .. '\u06ff' +    /* Arabic */
+    '\u0900' .. '\u097f' +    /* Devanagari (Hindi, Sanskrit, etc.) */
+    '\u3040' .. '\u30ff' +    /* Hiragana and Katakana (Japanese) */
+    '\u4e00' .. '\u9fff' +    /* CJK Unified Ideographs (Chinese, Kanji, etc.) */
+    '\uac00' .. '\ud7af' +    /* Hangul Syllables (Korean) */
+    '\u2000' .. '\u206f' +    /* General Punctuation */
+    '\u20a0' .. '\u27bf' +    /* Currency, Math, Arrows, Misc Symbols */
+    '\u3000' .. '\u303f' +    /* CJK Symbols and Punctuation */
+    '\u0009' .                /* Tab character */
+	freeTextChars = ANY - eol .
 
+/* ---------------------------------------------------------------------- */
 TOKENS
-ident = ( "_" | letter | hanziUnicode) { "_" | letter | digit | hanziUnicode}.
-ignoreAbleIdent = "_".
+	ident =	( "_" | letter | hanziUnicode) { "_" | letter | digit | hanziUnicode } .
+	ignoreAbleIdent = "_" .
 
-number = digit {digit}.
-double = (digit {digit} "." digit {digit}) | (digit {digit} "d").
-longNumber = digit {digit} "l".
+	/*objectInstance = letter { "_" | letter | digit } "!" .
 
-freeTextStart = "<<<".
-freeTextEnd = ">>>".
-stringCon = ('"' { stringCh | backslash printable} '"')
-| ( "@\"" { verbatimStringChar | "\"\""} "\"")
-| ( "<<<" { freeTextChars} ">>>")
-.
+	objectInstanceByData = letter { "_" | letter | digit } "[" letter { "_" | letter | digit } "]" "!" .
+	dataByInstance = letter { "_" | letter | digit } "." letter { "_" | letter | digit } .*/
 
-if = "if".
-else = "else".
-goto = "goto".
-thisKeywords = "this".
-elseif = "elseif".
-objectKeywords = "object".
-varKeywords = "var".
-StringBuilderKeywords = "StringBuilder".
-intKeywords = "int".
-doubleKeywords = "double".
-clr = "clr".
-boolKeywords = "bool".
-nowKeywords = "now".
-dateKeywords = "date".
-stringKeywords = "string".
-nullKeywords = "null".
-falseKeywords = "false".
-trueKeywords = "true".
-returnKeywords = "return".
-retKeywords = "ret".
-urlKeywords = "url".
-continueKey = "continue".
-breakKey = "break".
-clientBags = "client." ( letter) { "-" | "_" | letter | digit}.
-amp = "&".
-doubleAmp = "&&".
-doubleOr = " | | ".
-andassgn = "& = ".
-assgn = " = ".
-colon = ":".
-comma = ",".
-dec = "--".
-divassgn = "/ = ".
-div = "/".
-slash = "\\".
-dot = ".".
-dblcolon = "::".
-eq = " = = ".
-gt = ">".
-gteq = "> = ".
-inc = "++".
-lbrace = "{".
-lpar = "(".
-lshassgn = "<< = ".
-lt = "<".
-le = "< = ".
-ltlt = "<<".
-minus = "-".
-minusassgn = "- = ".
-modassgn = "% = ".
-neq = "! = ".
-not = "!".
-plus = "+".
-plusassgn = "+ = ".
-question = "?".
-rbrace = "}".
-rpar = ")".
-scolon = ";".
-tilde = "~".
-times = "*".
-timesassgn = "* = ".
-while = "while".
-xorassgn = "^ = ".
-downloadassgn = "<-".
-downloadassgnWC = "<+".
-global = "global".
-new = "new".
-SiteConfigKeywords = "SiteConfig".
-load = "load".
-lbrack = "[".
-rbrack = "]".
-bar = " | ".
-importKeywords = "import".
-asKeywords = "as".
-tryKeywords = "try".
-catchKeywords = "catch".
-doKeywords = "do".
-forKeywords = "for".
-FuncKeywords = "Func".
-funcKeywords = "func".
-voidKeywords = "void".
-SiteKeywords = "Site".
-configKeywords = "config".
-longKeywords = "long".
-retOperator = " = >".
+	number = digit {digit}.
+	double =	(digit {digit} "." digit {digit}) |	(digit {digit} "d").
+	longNumber = digit {digit} "l".
+	/*timespan =	(digit {digit} "." digit {digit} | digit {digit})	("d" | "h" | "m" | "s").*/
 
-COMMENTS FROM "" NESTED
-COMMENTS FROM "
+  freeTextStart = "<<<" .
+  freeTextEnd = ">>>" .
+	stringCon	= ('"' { stringCh | backslash printable } '"' )
+								| ( "@\"" { verbatimStringChar | "\"\"" } "\"" )
+								| ( "<<<" { freeTextChars } ">>>" )
+							 .
 
-IGNORE cr + lf + tab
+	/*----- operators and special characters needed in LL(1) resolvers --------------*/
+	if			= "if" . 
+	else		= "else" .
+	goto		= "goto"	.
+	thisKeywords= "this" .
+	elseif		= "elseif".
+	objectKeywords = "object" .
+	varKeywords = "var" .
+	StringBuilderKeywords = "StringBuilder" .
+	intKeywords = "int" .
+	doubleKeywords = "double" .
+	clr = "clr".
+	boolKeywords = "bool" .
+	nowKeywords = "now" .
+	dateKeywords = "date" .
+	stringKeywords = "string" .
+	nullKeywords = "null" .
+	falseKeywords = "false" .
+	trueKeywords = "true" .
+	returnKeywords =	"return" .
+	retKeywords =	"ret" .
+	urlKeywords = "url" .
+	continueKey = "continue" .
+	breakKey = "break" .
+	clientBags = "client."		( letter) { "-" | "_" | letter | digit } .
+	amp		 = "&".
+	doubleAmp	 = "&&" .
+	doubleOr	= "||" .
+	andassgn	= "&=".
+	assgn		 = "=".
+	colon		 = ":".
+	comma		 = ",".
+	dec		 = "--".
+	divassgn	= "/=".
+	div		 = "/".
+	slash		 = "\\".
+	dot		 = ".".
+	dblcolon	= "::".
+	eq			= "==".
+	gt			= ">".
+	gteq		= ">=".
+	inc		 = "++".
+	lbrace		= "{".
+	lpar		= "(".
+	lshassgn	= "<<=".
+	lt			= "<" .
+	le			= "<=" .
+	ltlt		= "<<".
+	minus		 = "-".
+	minusassgn	= "-=".
+	modassgn	= "%=".
+	neq		 = "!=".
+	not		 = "!".
+	plus		= "+".
+	plusassgn	 = "+=".
+	question	= "?".
+	rbrace		= "}".
+	rpar		= ")".
+	scolon		= ";".
+	tilde		 = "~".
+	times		 = "*".
+	timesassgn	= "*=".
+	while		 = "while".
+	xorassgn	= "^=".
+	downloadassgn	= "<-".
+	downloadassgnWC = "<+" .
+	global = "global".
+	new = "new" .
+	SiteConfigKeywords = "SiteConfig".
+	load = "load".
+	lbrack = "[".
+	rbrack = "]".
+	bar = "|".
+	importKeywords = "import".
+	asKeywords = "as".
+	tryKeywords = "try".
+	catchKeywords = "catch".
+	doKeywords = "do".
+	forKeywords = "for".
+	FuncKeywords = "Func".
+	funcKeywords = "func".
+	voidKeywords = "void".
+	SiteKeywords = "Site".
+	configKeywords = "config".
+	longKeywords = "long" .
+	retOperator = "=>" .
+
+/* ---------------------------------------------------------------------- */
+
+	COMMENTS FROM "/*" TO "*/" NESTED
+	COMMENTS FROM "//" TO lf
+
+	IGNORE cr + lf + tab
 
 PRODUCTIONS
+/* ---------------------------------------------------------------------- */
 
-Formula
-= IF (this.Mode = = Interpreter.Parser.CompileMode.Block)
-( { Import [";"]}
-AllMethod<out stmt>
-{ AllMethod<out stmt>
-}
-)
-|
-( { Import [";"]}
-{ VoidMethod<out stmt>
-| FuncMethod<out stmt>
-}
-(
-ReturnStatements<out stmt>
-)
-{ VoidMethod<out stmt>
-| FuncMethod<out stmt>
-}
-)
+Formula						(.	Statement stmt = null;	.)
+= IF	(this.Mode == Interpreter.Parser.CompileMode.Block) 
+	(	{ Import [";"] }
+		AllMethod<out stmt>		(.	this.Statements.Add(stmt);	.)
+		{ AllMethod<out stmt>		(.	this.Statements.Add(stmt);	.)
+		} 
+	)
+	|
+	(	{ Import [";"] }
+		{		VoidMethod<out stmt>	(.	this.Statements.Add(stmt);	.)
+			|	FuncMethod<out stmt>	(.	this.Statements.Add(stmt);	.)
+		}
+		(
+		 ReturnStatements<out stmt>	(.	this.Statements.Add(stmt);	
+		 															this.EvalGoto(currentRegionCode);
+															.)
+		)
+		{		VoidMethod<out stmt>	(.	this.Statements.Add(stmt);	.)
+			|	FuncMethod<out stmt>	(.	this.Statements.Add(stmt);	.)
+		}
+	)
 EOF
 .
 
-Import
-= importKeywords Ident<out s>
-{
-ANY
-}
-asKeywords Ident<out s>
+
+Import													(. string s = ""; var sb = new System.Text.StringBuilder(); .)
+=	importKeywords Ident<out s>					(. sb.Append(s); .)
+					{
+						ANY								(. sb.Append(t.val); .)
+					}
+					asKeywords Ident<out s>			(. this.Import(s, sb.ToString()); .)
 .
 
-AllMethod<out Statement stmt>
-= Site<out stmt>
-| FuncMethod<out stmt>
-| VoidMethod<out stmt>
+AllMethod<out Statement stmt>			(.	stmt = null;	.)
+=	 Site<out stmt>
+	| FuncMethod<out stmt>
+	| VoidMethod<out stmt>
 .
 
-ReturnStatements<out Statement block> =
-(
-( Stmt<out stmt>
-{
-Stmt<out stmt>
-}
-[
-ReturnStmt<out stmt>
-[";"]
-]
 
-)
-| ( ReturnStmt<out stmt> [";"]
-)
-)
+ReturnStatements<out Statement block> =		(.	List<Statement> stmtList = new List<Statement>(); Statement stmt;	.)
+( 
+	(	Stmt<out stmt>							(.	stmtList.Add(stmt);	.)
+		{														(.	if(this.IsToEmitPopForExpr) {
+																			stmtList.Add(new OpcodeStatement(this.currentRegionCode, System.Reflection.Emit.OpCodes.Pop));
+																			IsToEmitPopForExpr = false;
+																		}
+																.)
+			Stmt<out stmt>						(.	stmtList.Add(stmt);	.)
+		}														(.	bool isReturned = false; .)
+		[														(.	if(this.IsToEmitPopForExpr) {
+																			stmtList.Add(new OpcodeStatement(this.currentRegionCode, System.Reflection.Emit.OpCodes.Pop));
+																			IsToEmitPopForExpr = false;
+																		}
+																.)
+			ReturnStmt<out stmt>			(.	isReturned = true; stmtList.Add(stmt);	.)
+			[";"] 
+		]														(. 
+																		if(!isReturned && this.Mode == Interpreter.Parser.CompileMode.Expr) {
+																			if(stmtList.Count > 0) {
+																				ExprStatement lastExprStmt = stmtList[stmtList.Count - 1] as ExprStatement;
+																				if(lastExprStmt != null) {
+																					stmtList[stmtList.Count - 1] =
+																						new ReturnStatement(this.currentRegionCode, lastExprStmt.Expression, this.Mode);
+																					isReturned = true;
+																					IsToEmitPopForExpr = false;
+																				}
+																			}
+																		}
+																		if(!isReturned) {
+																			if(this.Mode == Interpreter.Parser.CompileMode.Func) {
+																					throw new Exception(this.GetCurrentPosition() + "func must have return / =>.");
+																			}
+																			stmtList.Add(new OpcodeStatement(this.currentRegionCode, System.Reflection.Emit.OpCodes.Ret));
+																		}
+																.)
+
+	) 
+	|	( ReturnStmt<out stmt> [";"]	(.	stmtList.Add(stmt);	.)
+		)
+)																(.	block = new Block(this.currentRegionCode, stmtList); .)
 .
+
 
 FuncReturnStatements<out Statement block>
-
+													(.	List<Statement> stmtList = new List<Statement>(); Statement stmt = null; .)
 =
-{
-FuncVoidNonReturnStmt<out stmt>
-}
-ReturnStmt<out stmt>
-[";"]
-
+	{
+		FuncVoidNonReturnStmt<out stmt>			(.	stmtList.Add(stmt);
+																						if(this.IsToEmitPopForExpr) {
+																							stmtList.Add(new OpcodeStatement(this.currentRegionCode, System.Reflection.Emit.OpCodes.Pop));
+																							IsToEmitPopForExpr = false;
+																						}
+																				.)
+	}
+	ReturnStmt<out stmt>									(.	stmtList.Add(stmt); .)
+	[";"]
+																				(.	block = new Block(this.currentRegionCode, stmtList); .)
 .
 
-FuncVoidNonReturnStmt<out Statement stmt>
+
+FuncVoidNonReturnStmt<out Statement stmt> (. stmt = null; Expression e = null; .)
 =
-(
-IF (Peek(1).val = = ":") DeclareGoto<out stmt>
-| IF (IsAssignment()) AssignStmt<out stmt> [";"]
-| (
-IfStmt<out stmt>
-| ForStmt<out stmt>
-| WhileStmt<out stmt>
-| DoWhileStmt<out stmt>
-| ExprStmt<out stmt> [";"]
-| VarDecStmt<out stmt> [";"]
-| gotoInvoke<out stmt> [";"]
-| LoadStmt<out stmt>
-)
-)
-| TryStmt<out stmt>
+	(
+		IF	(Peek(1).val == ":") DeclareGoto<out stmt>
+		|	IF	(IsAssignment()) AssignStmt<out stmt> [";"]
+		|	(
+					IfStmt<out stmt>
+				|	ForStmt<out stmt>
+				|	WhileStmt<out stmt>
+				|	DoWhileStmt<out stmt> 
+				|	ExprStmt<out stmt>	 [";"]
+				|	VarDecStmt<out stmt>	 [";"]
+				|	gotoInvoke<out stmt>	 [";"]
+				|	LoadStmt<out stmt> 
+			)
+	)	
+	| TryStmt<out stmt>
 .
 
-Stmt<out Statement stmt>
+
+
+
+Stmt<out Statement stmt>				(. stmt = null; Expression e = null;.)
 =
-(
-IF (Peek(1).val = = ":") DeclareGoto<out stmt>
-| IF (IsAssignment()) AssignStmt<out stmt> [";"]
-| (
-IfStmt<out stmt>
-| ForStmt<out stmt>
-| WhileStmt<out stmt>
-| DoWhileStmt<out stmt>
-| ExprStmt<out stmt> [";"]
-| VarDecStmt<out stmt> [";"]
-| gotoInvoke<out stmt> [";"]
-| LoadStmt<out stmt>
-)
-)
-| TryStmt<out stmt>
+	(
+		IF	(Peek(1).val == ":") DeclareGoto<out stmt>
+		|	IF	(IsAssignment()) AssignStmt<out stmt> [";"]
+		|	(
+					IfStmt<out stmt>
+				|	ForStmt<out stmt>
+				|	WhileStmt<out stmt>
+				|	DoWhileStmt<out stmt> 
+				|	ExprStmt<out stmt>	 [";"]
+				|	VarDecStmt<out stmt>	 [";"]
+				|	gotoInvoke<out stmt>	 [";"]
+				|	LoadStmt<out stmt> 
+			)
+	)	
+	| TryStmt<out stmt>
 .
 
-TryReturnStmt<out Statement stmt>
+TryReturnStmt<out Statement stmt>	(.	Expression e = null; stmt = null; .)
 =
-(returnKeywords | retOperator | retKeywords)
-(
-";"
-| Expr<out e>
-)
+	(returnKeywords | retOperator | retKeywords)
+	(
+		";"														(.
+																					if (this.Mode != Interpreter.Parser.CompileMode.Void)
+																						SemErr("return without expression only allowed in void context");
+																					stmt = new ReturnVoidStatement(this.currentRegionCode);
+																				.)
+	|	Expr<out e>												(.
+																					if (this.Mode != Interpreter.Parser.CompileMode.Func)
+																						SemErr("return with expression only allowed in func context");
+																					stmt = new ReturnStatement(this.currentRegionCode, e, this.Mode);
+																				.)
+	)
 .
 
-TryInnerStmt<out Statement stmt>
+TryInnerStmt<out Statement stmt>		(.	stmt = null;	.)
 =
-IF (Peek(1).val = = ":") DeclareGoto<out stmt>
-| IF (IsAssignment()) AssignStmt<out stmt> [";"]
-| IfStmt<out stmt>
-| ForStmt<out stmt>
-| WhileStmt<out stmt>
-| DoWhileStmt<out stmt>
-| VarDecStmt<out stmt> [";"]
-| ExprStmt<out stmt> [";"]
-| TryStmt<out stmt>
-| TryReturnStmt<out stmt> [";"]
+	IF	(Peek(1).val == ":") DeclareGoto<out stmt>
+|	IF	(IsAssignment()) AssignStmt<out stmt> [";"]
+|	IfStmt<out stmt>
+|	ForStmt<out stmt>
+|	WhileStmt<out stmt>
+|	DoWhileStmt<out stmt>
+|	VarDecStmt<out stmt> [";"]
+|	ExprStmt<out stmt> [";"]
+|	TryStmt<out stmt>
+|	TryReturnStmt<out stmt> [";"]
 .
 
-CatchInnerStmt<out Statement stmt>
+CatchInnerStmt<out Statement stmt>		(.	stmt = null;	.)
 =
-IF (Peek(1).val = = ":") DeclareGoto<out stmt>
-| IF (IsAssignment()) AssignStmt<out stmt> [";"]
-| IfStmt<out stmt>
-| ForStmt<out stmt>
-| WhileStmt<out stmt>
-| DoWhileStmt<out stmt>
-| VarDecStmt<out stmt> [";"]
-| ExprStmt<out stmt> [";"]
-| gotoInvoke<out stmt> [";"]
-| TryStmt<out stmt>
-| TryReturnStmt<out stmt> [";"]
+	IF	(Peek(1).val == ":") DeclareGoto<out stmt>
+|	IF	(IsAssignment()) AssignStmt<out stmt> [";"]
+|	IfStmt<out stmt>
+|	ForStmt<out stmt>
+|	WhileStmt<out stmt>
+|	DoWhileStmt<out stmt>
+|	VarDecStmt<out stmt> [";"]
+|	ExprStmt<out stmt> [";"]
+|	gotoInvoke<out stmt> [";"]
+|	TryStmt<out stmt>
+|	TryReturnStmt<out stmt> [";"]
 .
 
-TryStmt<out Statement stmt>
+TryStmt<out Statement stmt>		(. stmt = null; Expression e = null; .)
 =
-tryKeywords "{"
-TryInnerStmt<out stmt>
-{ TryInnerStmt<out stmt>}
-"}" catchKeywords "{"
-{ CatchInnerStmt<out stmt>}
-"}"
+	tryKeywords "{"						(.	List<Statement> catchList = new List<Statement>();
+													List<Statement> stmtList = new List<Statement>(); .)
+		TryInnerStmt<out stmt>												(.	stmtList.Add(stmt);	.)
+		{	TryInnerStmt<out stmt>											(.	stmtList.Add(stmt);	.)	}
+	"}" catchKeywords "{"													(.	IsCatch = true;	.)
+		{	CatchInnerStmt<out stmt>										(.	catchList.Add(stmt);	.)	}
+	"}"																	(.	stmt = new TryStatement(this.currentRegionCode, stmtList, catchList); IsCatch = false; .)
 .
 
-LoopBody<out Statement body>
+LoopBody<out Statement body>			(.	body = null;	.)
 =
-LoopBracedBody<out body>
+	LoopBracedBody<out body>
 | ContinueInvoke<out body> [";"]
 | BreakInvoke<out body> [";"]
 | Stmt<out body>
 .
 
-LoopBracedBody<out Statement body>
+
+LoopBracedBody<out Statement body>		(.	body = null;	.)
 =
-"{"
-(
-IF(this.Mode = = Interpreter.Parser.CompileMode.Func) FuncBlockInner<out body>
-| IF(this.Mode = = Interpreter.Parser.CompileMode.Void) VoidBlockInner<out body>
-| BlockIfInner<out body>
-)
-"}"
+	"{"
+		(
+			IF(this.Mode == Interpreter.Parser.CompileMode.Func) FuncBlockInner<out body>
+		| IF(this.Mode == Interpreter.Parser.CompileMode.Void) VoidBlockInner<out body>
+		| BlockIfInner<out body>
+		)
+	"}"
 .
 
-BlockItem<out Statement stmt>
-=
-IF(p1.kind = = _ignoreAbleIdent)
-ignoreAbleIdent Expr<out e>
-[";"]
-|
-IF(p1.kind = = _ident && Peek(2).val = = ":")
-DeclareGoto<out stmt>
-|
-IF(IsAssignment()) AssignStmt<out stmt> [";"]
-|
-IfStmt<out stmt>
-|
-ForStmt<out stmt>
-|
-WhileStmt<out stmt>
-|
-DoWhileStmt<out stmt>
-|
-TryStmt<out stmt>
-|
-ContinueInvoke<out stmt> [";"]
-|
-BreakInvoke<out stmt> [";"]
-|
-gotoInvoke<out stmt> [";"]
-|
-LoadStmt<out stmt>
-|
-IF(Peek(1).val = = "." | | Peek(1).val = = "..")
-ExprStmt<out stmt>
 
-";"
+
+BlockItem<out Statement stmt>				(.	stmt = null; Expression e = null; Token p1 = Peek(1);	.)
+=
+IF(p1.kind == _ignoreAbleIdent)
+	ignoreAbleIdent Expr<out e>			(.	e = new ExpressionPop(this.currentRegionCode, e); IsToEmitPopForExpr = false; stmt = new ExprStatement(this.currentRegionCode, e); .) 
+		[";"]
 |
-IF(IsMethod()) MethodInvocation<out e> [";"]
+	IF(p1.kind == _ident && Peek(2).val == ":")
+		DeclareGoto<out stmt>
 |
-VarDecStmt<out stmt> [";"]
+	IF(IsAssignment()) AssignStmt<out stmt> [";"]
 |
-ExprStmt<out stmt> [";"]
+	IfStmt<out stmt>
+|
+	ForStmt<out stmt>
+|
+	WhileStmt<out stmt>
+|
+	DoWhileStmt<out stmt>
+|
+	TryStmt<out stmt>
+|
+	ContinueInvoke<out stmt> [";"]
+|
+	BreakInvoke<out stmt> [";"]
+|
+	gotoInvoke<out stmt> [";"]
+|
+	LoadStmt<out stmt>
+|
+	IF(Peek(1).val == "." || Peek(1).val == "..")
+		ExprStmt<out stmt>
+			(.	if(this.IsToEmitPopForExpr) {
+						List<Statement> exprStatements = new List<Statement>();
+						exprStatements.Add(stmt);
+						exprStatements.Add(new OpcodeStatement(this.currentRegionCode, System.Reflection.Emit.OpCodes.Pop));
+						stmt = new Block(this.currentRegionCode, exprStatements);
+						IsToEmitPopForExpr = false;
+					}
+			.)
+		";"
+|
+	IF(IsMethod()) MethodInvocation<out e> [";"]	(.	var exprStmt = new ExprStatement(this.currentRegionCode, e); exprStmt.DiscardResult = true; stmt = exprStmt; .)
+|
+	VarDecStmt<out stmt> [";"]
+|
+	ExprStmt<out stmt> [";"]
 .
+
+
+
 
 FuncBlockInner<out Statement block>
-
+													(.	List<Statement> stmtList = new List<Statement>(); Statement stmt = null; Expression e = null; Token p1 = Peek(1); .)
 =
-{
-(
-IF(p1.kind = = _ignoreAbleIdent)
-ignoreAbleIdent Expr<out e>
-[";"]
-|
-IF(p1.kind = = _ident && Peek(2).val = = ":")
-DeclareGoto<out stmt>
-|
-IF(IsAssignment())
-AssignStmt<out stmt> [";"]
-|
-ReturnStmt<out stmt> [";"]
-|
-IfStmt<out stmt>
-|
-ForStmt<out stmt>
-|
-WhileStmt<out stmt>
-|
-DoWhileStmt<out stmt>
-|
-TryStmt<out stmt>
-|
-ContinueInvoke<out stmt> [";"]
-|
-BreakInvoke<out stmt> [";"]
-|
-gotoInvoke<out stmt> [";"]
-|
-LoadStmt<out stmt>
-|
-IF(Peek(1).val = = "." | | Peek(1).val = = "..")
-ExprStmt<out stmt>
-
-";"
-|
-IF(IsMethod()) MethodInvocation<out e> [";"]
-|
-VarDecStmt<out stmt> [";"]
-|
-ExprStmt<out stmt> [";"]
-)
-
-}
-
+	{
+		(
+			IF(p1.kind == _ignoreAbleIdent)
+				ignoreAbleIdent Expr<out e>			(.	e = new ExpressionPop(this.currentRegionCode, e); IsToEmitPopForExpr = false; stmt = new ExprStatement(this.currentRegionCode, e); .) 
+				[";"]
+		|
+			IF(p1.kind == _ident && Peek(2).val == ":")
+				DeclareGoto<out stmt>
+		|
+			IF(IsAssignment())
+				AssignStmt<out stmt> [";"]
+		|
+			ReturnStmt<out stmt> [";"]
+		|
+			IfStmt<out stmt>
+		|
+			ForStmt<out stmt>
+		|
+			WhileStmt<out stmt>
+		|
+			DoWhileStmt<out stmt>
+		|
+			TryStmt<out stmt>
+		|
+			ContinueInvoke<out stmt> [";"]
+		|
+			BreakInvoke<out stmt> [";"]
+		|
+			gotoInvoke<out stmt> [";"]
+		|
+			LoadStmt<out stmt>
+		|
+			IF(Peek(1).val == "." || Peek(1).val == "..")
+				ExprStmt<out stmt>
+					(.	if(this.IsToEmitPopForExpr) {
+								List<Statement> exprStatements = new List<Statement>();
+								exprStatements.Add(stmt);
+								exprStatements.Add(new OpcodeStatement(this.currentRegionCode, System.Reflection.Emit.OpCodes.Pop));
+								stmt = new Block(this.currentRegionCode, exprStatements);
+								IsToEmitPopForExpr = false;
+							}
+					.)
+				";"
+		|
+			IF(IsMethod()) MethodInvocation<out e> [";"]	(.	var exprStmt = new ExprStatement(this.currentRegionCode, e); exprStmt.DiscardResult = true; stmt = exprStmt; .)
+		|
+			VarDecStmt<out stmt> [";"]
+		|
+			ExprStmt<out stmt> [";"]
+		)
+													(.	stmtList.Add(stmt);
+															if(this.IsToEmitPopForExpr) {
+																stmtList.Add(new OpcodeStatement(this.currentRegionCode, System.Reflection.Emit.OpCodes.Pop));
+																IsToEmitPopForExpr = false;
+															}
+													.)
+	}
+													(.	block = new Block(this.currentRegionCode, stmtList); .)
 .
 
-FuncBlock<out Statement block> =
+
+
+FuncBlock<out Statement block> =		(.	List<Statement> stmtList = new List<Statement>(); Statement stmt; .)
 (
-"{"
-[
-(
-(
-BlockItem<out stmt>
-{
-BlockItem<out stmt>
-}
-[
-ReturnStmt<out stmt>
-[";"]
-]
-)
-|
-(
-ReturnStmt<out stmt>
-[";"]
-)
-)
-]
-"}"
-)
+	"{"
+	[
+		(
+			(
+				BlockItem<out stmt>					(.	stmtList.Add(stmt);
+																				if(this.IsToEmitPopForExpr) { stmtList.Add(new OpcodeStatement(this.currentRegionCode, System.Reflection.Emit.OpCodes.Pop)); IsToEmitPopForExpr = false; }
+																		.)
+				{
+					BlockItem<out stmt>				(.	stmtList.Add(stmt);
+																				if(this.IsToEmitPopForExpr) { stmtList.Add(new OpcodeStatement(this.currentRegionCode, System.Reflection.Emit.OpCodes.Pop)); IsToEmitPopForExpr = false; }
+																		.)
+				}
+				[
+					ReturnStmt<out stmt>			(.	stmtList.Add(stmt);	.)
+					[";"]
+				]
+			)
+		|
+			(
+				ReturnStmt<out stmt>				(.	stmtList.Add(stmt);	.)
+				[";"]
+			)
+		)
+	]
+	"}"
+)																(.	block = new Block(this.currentRegionCode, stmtList); .)
 .
+
+
 
 VoidBlockInner<out Statement block>
-
+													(.	List<Statement> stmtList = new List<Statement>(); Statement stmt = null; Expression e = null; Token p1 = Peek(1); .)
 =
-{
-(
-IF(p1.kind = = _ignoreAbleIdent)
-ignoreAbleIdent Expr<out e>
-[";"]
-|
-IF(p1.kind = = _ident && Peek(2).val = = ":")
-DeclareGoto<out stmt>
-|
-IF(IsAssignment())
-AssignStmt<out stmt> [";"]
-|
-VoidReturnStmt<out stmt> [";"]
-|
-IfStmt<out stmt>
-|
-ForStmt<out stmt>
-|
-WhileStmt<out stmt>
-|
-DoWhileStmt<out stmt>
-|
-TryStmt<out stmt>
-|
-ContinueInvoke<out stmt> [";"]
-|
-BreakInvoke<out stmt> [";"]
-|
-gotoInvoke<out stmt> [";"]
-|
-LoadStmt<out stmt>
-|
-IF(Peek(1).val = = "." | | Peek(1).val = = "..")
-ExprStmt<out stmt>
-
-";"
-|
-IF(IsMethod()) MethodInvocation<out e> [";"]
-|
-VarDecStmt<out stmt> [";"]
-|
-ExprStmt<out stmt> [";"]
-)
-
-}
-
+	{
+		(
+			IF(p1.kind == _ignoreAbleIdent)
+				ignoreAbleIdent Expr<out e>			(.	e = new ExpressionPop(this.currentRegionCode, e); IsToEmitPopForExpr = false; stmt = new ExprStatement(this.currentRegionCode, e); .) 
+				[";"]
+		|
+			IF(p1.kind == _ident && Peek(2).val == ":")
+				DeclareGoto<out stmt>
+		|
+			IF(IsAssignment())
+				AssignStmt<out stmt> [";"]
+		|
+			VoidReturnStmt<out stmt> [";"]
+		|
+			IfStmt<out stmt>
+		|
+			ForStmt<out stmt>
+		|
+			WhileStmt<out stmt>
+		|
+			DoWhileStmt<out stmt>
+		|
+			TryStmt<out stmt>
+		|
+			ContinueInvoke<out stmt> [";"]
+		|
+			BreakInvoke<out stmt> [";"]
+		|
+			gotoInvoke<out stmt> [";"]
+		|
+			LoadStmt<out stmt>
+		|
+			IF(Peek(1).val == "." || Peek(1).val == "..")
+				ExprStmt<out stmt>
+					(.	if(this.IsToEmitPopForExpr) {
+								List<Statement> exprStatements = new List<Statement>();
+								exprStatements.Add(stmt);
+								exprStatements.Add(new OpcodeStatement(this.currentRegionCode, System.Reflection.Emit.OpCodes.Pop));
+								stmt = new Block(this.currentRegionCode, exprStatements);
+								IsToEmitPopForExpr = false;
+							}
+					.)
+				";"
+		|
+			IF(IsMethod()) MethodInvocation<out e> [";"]	(.	var exprStmt = new ExprStatement(this.currentRegionCode, e); exprStmt.DiscardResult = true; stmt = exprStmt; .)
+		|
+			VarDecStmt<out stmt> [";"]
+		|
+			ExprStmt<out stmt> [";"]
+		)
+													(.	stmtList.Add(stmt);
+															if(this.IsToEmitPopForExpr) {
+																stmtList.Add(new OpcodeStatement(this.currentRegionCode, System.Reflection.Emit.OpCodes.Pop));
+																IsToEmitPopForExpr = false;
+															}
+													.)
+	}
+													(.	block = new Block(this.currentRegionCode, stmtList); .)
 .
 
-VoidBlock<out Statement block> =
+
+
+VoidBlock<out Statement block> =		(.	List<Statement> stmtList = new List<Statement>(); Statement stmt; .)
 (
-"{"
-[
-(
-(
-BlockItem<out stmt>
-{
-BlockItem<out stmt>
-}
-[
-VoidReturnStmt<out stmt>
-[";"]
-]
-)
-|
-(
-VoidReturnStmt<out stmt>
-[";"]
-)
-)
-]
-"}"
-)
+	"{"
+	[
+		(
+			(
+				BlockItem<out stmt>					(.	stmtList.Add(stmt);
+																				if(this.IsToEmitPopForExpr) { stmtList.Add(new OpcodeStatement(this.currentRegionCode, System.Reflection.Emit.OpCodes.Pop)); IsToEmitPopForExpr = false; }
+																		.)
+				{
+					BlockItem<out stmt>				(.	stmtList.Add(stmt);
+																				if(this.IsToEmitPopForExpr) { stmtList.Add(new OpcodeStatement(this.currentRegionCode, System.Reflection.Emit.OpCodes.Pop)); IsToEmitPopForExpr = false; }
+																		.)
+				}
+				[
+					VoidReturnStmt<out stmt>		(.	stmtList.Add(stmt);	.)
+					[";"]
+				]
+			)
+		|
+			(
+				VoidReturnStmt<out stmt>			(.	stmtList.Add(stmt);	.)
+				[";"]
+			)
+		)
+	]
+	"}"
+)																	(.	block = new Block(this.currentRegionCode, stmtList); .)
 .
+
+
+
 
 VoidReturnStmt<out Statement stmt>
 =
-(returnKeywords | retKeywords)
+(returnKeywords | retKeywords)		(.	stmt = new ReturnVoidStatement(this.currentRegionCode); .)
 .
 
-LoadStmt<out Statement stmt>
-= load
-ANY
-{ ANY
-} ";"
+
+LoadStmt<out Statement stmt>			(.	stmt = null; string assembly = ""; string posi = ""; .)
+= load														(.	posi = this.GetCurrentPosition(); .)
+ANY																(.	assembly += t.val; .)
+	{ ANY														(.	assembly += t.val; .)
+	} ";"														(.	stmt = new ExprStatement(this.currentRegionCode, new ExpressionLoad(assembly, posi)); .)
 .
 
 DeclareGoto<out Statement stmt>
-= ident
-colon
+									= ident					(.	
+																		if	(!this.gotoDeclared.Contains(t.val)) { this.gotoDeclared.Add(t.val); }
+																		stmt = new GotoDeclare(this.currentRegionCode, this.currentRegionCode +	(currentOutBlock != "" ? "." + currentOutBlock : ""), t.val); 
+																	.)
+	colon
 .
 
-gotoInvoke<out Statement e>
+gotoInvoke<out Statement e>	(.	e = null; .)
 = goto
-ident
+	ident						(.	if (!gotoInvoked.Contains(t.val)) { gotoInvoked.Add(t.val); }
+											if(!IsCatch) {
+												e = new GotoInvoke(this.currentRegionCode, this.currentRegionCode +	(currentOutBlock != "" ? "." + currentOutBlock : ""), t.val); 
+											}
+											else {
+												e = new CatchGotoInvoke(this.currentRegionCode, this.currentRegionCode +	(currentOutBlock != "" ? "." + currentOutBlock : ""), t.val); 
+											}
+							 	.)
 .
 
-ContinueInvoke<out Statement e>
-= continueKey
+ContinueInvoke<out Statement e> 
+= continueKey					(.	e = new Continue(this.currentRegionCode, this.GetTopLoop());	.)
 .
 
-BreakInvoke<out Statement e>
-= breakKey
+BreakInvoke<out Statement e> 
+= breakKey						(.	e = new Break(this.currentRegionCode, this.GetTopLoop());	.)
 .
 
-WhileStmt<out Statement stmt>
+WhileStmt<out Statement stmt>				(.	Expression e; Statement body = null; .)
 =
-while "(" Expr<out e>
-")"
-LoopBody<out body>
-
+	while "(" Expr<out e>							(.	While stmtWhile = new While(this.currentRegionCode, e); Loops.Push(stmtWhile); .)
+	")"
+	LoopBody<out body>
+																		(.	
+																			if(body is Block) { stmtWhile.Stmts = ((Block)body).statements; }
+																			else {
+																				var one = new List<Statement>(); one.Add(body);
+																				if(this.IsToEmitPopForExpr) { one.Add(new OpcodeStatement(this.currentRegionCode, System.Reflection.Emit.OpCodes.Pop)); IsToEmitPopForExpr = false; }
+																				stmtWhile.Stmts = one;
+																			}
+																			Loops.Pop(); stmt = stmtWhile;
+																		.)
 .
 
-DoWhileStmt<out Statement stmt>
+
+
+
+
+DoWhileStmt<out Statement stmt>				(.	List<Statement> stmtList = new List<Statement>(); Expression e; .)
 =
-doKeywords
-"{"
-Stmt<out stmt>
-{ Stmt<out stmt>
-}
-"}"
-while "(" Expr<out e>
-")"
-[";"]
+	doKeywords										(.	DoWhile stmtDoWhile = new DoWhile(this.currentRegionCode); 
+															Loops.Push(stmtDoWhile);
+											 		.)
+	"{"
+		Stmt<out stmt>				(.	stmtList.Add(stmt); 
+															if(this.IsToEmitPopForExpr) {
+																stmtList.Add(new OpcodeStatement(this.currentRegionCode, System.Reflection.Emit.OpCodes.Pop));
+																IsToEmitPopForExpr = false;
+															}
+													.)
+		{ Stmt<out stmt>			(.	stmtList.Add(stmt); 
+															if(this.IsToEmitPopForExpr) {
+																stmtList.Add(new OpcodeStatement(this.currentRegionCode, System.Reflection.Emit.OpCodes.Pop));
+																IsToEmitPopForExpr = false;
+															}
+													.)
+		}											(.	stmtDoWhile.Stmts = stmtList;	.)
+	"}"
+		while "(" Expr<out e> 
+	")"											(.	stmtDoWhile.Condition = e; Loops.Pop(); stmt = stmtDoWhile; .)
+	[";"] 
 .
 
-ForStmt<out Statement stmtFor>
+
+ForStmt<out Statement stmtFor>					(.	Statement stmtDecl = null, stmtAsgn = null; Expression eCondition; Statement body = null; .)
 =
-forKeywords "(" [VarDecStmt<out stmtDecl> | AssignStmt<out stmtDecl>] ";"
-Expr<out eCondition> ";" [AssignStmt<out stmtAsgn>] ")"
-
-LoopBody<out body>
-
+	forKeywords "(" [VarDecStmt<out stmtDecl> | AssignStmt<out stmtDecl>] ";"
+				Expr<out eCondition> ";" [AssignStmt<out stmtAsgn>]	")"
+														(.	stmtFor = new For(this.currentRegionCode, stmtDecl, eCondition, stmtAsgn); Loops.Push(stmtFor as For); .)
+	LoopBody<out body>
+														(.	
+															if(body is Block) { (stmtFor as For).Stmts = ((Block)body).statements; } 
+															else {
+																var one = new List<Statement>(); one.Add(body);
+																if(this.IsToEmitPopForExpr) { one.Add(new OpcodeStatement(this.currentRegionCode, System.Reflection.Emit.OpCodes.Pop)); IsToEmitPopForExpr = false; }
+																(stmtFor as For).Stmts = one;
+															}
+															Loops.Pop();
+														.)
 .
 
-FuncMethod<out Statement stmt>
+
+FuncMethod<out Statement stmt>				(.	string methodName = ""; List<Statement> stmtList = new List<Statement>();	
+												 List<Statement> catchList = new List<Statement>(); bool bCatch = false;
+												 stmt = null; Type type = typeof(object); bool isReturnTypeSpecified = false;.)
 =
-(FuncKeywords | funcKeywords)
-[ intKeywords
-| stringKeywords
-| doubleKeywords
-| longKeywords
-| boolKeywords
-| objectKeywords
-| StringBuilderKeywords
-]
-Ident<out methodName>
-"("
-[Ident<out tmpParameter>
-{ "," Ident<out tmpParameter>
-}]
-")"
-"{" (
-FuncReturnStatements<out stmt>
-)
-"}"
-.
+	(FuncKeywords | funcKeywords)
+	[	 intKeywords							(.	type = typeof(int); isReturnTypeSpecified = true; .)
+		| stringKeywords					(.	type = typeof(string); isReturnTypeSpecified = true; .)
+		| doubleKeywords					(.	type = typeof(double); isReturnTypeSpecified = true; .)
+		| longKeywords						(.	type = typeof(long); isReturnTypeSpecified = true; .)
+		| boolKeywords						(.	type = typeof(bool); isReturnTypeSpecified = true; .)
+		| objectKeywords					(.	type = typeof(object); isReturnTypeSpecified = true; .)
+		| StringBuilderKeywords		(.	type = typeof(System.Text.StringBuilder); isReturnTypeSpecified = true; .)
+	]
+	Ident<out methodName>						(.	string oldcurrentRegionCode = currentRegionCode; this.currentRegionCode = methodName;	string tmpParameter=""; 
+																			this.Environment[methodName] = new Dictionary<string, Symbol>();
+																			this.ParaEnv[methodName] = new List<string>();
+																			PrepareGoto();
+																 .)
+	"("									 
+		[Ident<out tmpParameter>					(.	List<string> paraTbl = this.GetParamTable(this.currentRegionCode); paraTbl.Add(tmpParameter);this.SetParamTable(methodName, paraTbl); .)
+		{	 "," Ident<out tmpParameter>		(.	paraTbl = this.GetParamTable(this.currentRegionCode); paraTbl.Add(tmpParameter); this.SetParamTable(methodName, paraTbl); .)
+		}]
+	")"										(.	FuncCompileStatus funcCompile = new FuncCompileStatus()
+														{
+															Name = methodName,
+															NumOfParameters = this.GetParamTable(this.currentRegionCode).Count,
+															ReturnType = isReturnTypeSpecified ? type : null,
+															ReturnTypeExplicit = isReturnTypeSpecified
+														};
+														this.FuncCompiled.Add(funcCompile);
+											.)
+	"{"	(										(.	Interpreter.Parser.CompileMode curMode = this.Mode;this.Mode = Interpreter.Parser.CompileMode.Func; .)
+			FuncReturnStatements<out stmt>		(.	stmtList.Add(stmt);	.)
+		)
+	"}"										(.	stmt = new GlobalMethodStatement(methodName, type, this.ParaEnv[methodName], stmtList);	
+												 		this.EvalGoto(currentRegionCode);this.Mode = curMode; this.currentRegionCode = oldcurrentRegionCode;
+												.)
+. 
 
-VoidMethod<out Statement stmt>
+VoidMethod<out Statement stmt>				(.	string methodName = ""; List<Statement> stmtList = new List<Statement>();	
+																					List<Statement> catchList = new List<Statement>(); bool bCatch = false;
+																					stmt = null; Type type = typeof(void); .)
 =
-voidKeywords
-Ident<out methodName>
-"("
-[Ident<out tmpParameter>
-{ "," Ident<out tmpParameter>
-}]
-")"
-"{"
-(
-Stmt<out stmt>
-{ Stmt<out stmt>
-}
-)
-"}"
-.
+	voidKeywords
+	Ident<out methodName>						(.	string oldcurrentRegionCode = currentRegionCode; this.currentRegionCode = methodName;	string tmpParameter=""; 
+																			this.Environment[methodName] = new Dictionary<string, Symbol>();
+																			this.ParaEnv[methodName] = new List<string>();
+																			PrepareGoto();
+																 .)
+	"("									 
+		[Ident<out tmpParameter>			(.	List<string> paraTbl = this.GetParamTable(this.currentRegionCode); paraTbl.Add(tmpParameter);this.SetParamTable(methodName, paraTbl); .)
+		{	 "," Ident<out tmpParameter>		(.	paraTbl = this.GetParamTable(this.currentRegionCode); paraTbl.Add(tmpParameter); this.SetParamTable(methodName, paraTbl); .)
+		}]
+	")"										(.	FuncCompileStatus funcCompile = new FuncCompileStatus()
+														{
+															Name = methodName,
+															NumOfParameters = this.GetParamTable(this.currentRegionCode).Count,
+															ReturnType = type,
+															ReturnTypeExplicit = true
+														};
+												 		this.FuncCompiled.Add(funcCompile);
+											.)
+	"{" 
+		(											(.	Interpreter.Parser.CompileMode curMode = this.Mode;this.Mode = Interpreter.Parser.CompileMode.Void; .)
+			Stmt<out stmt>			(.	stmtList.Add(stmt); 
+															if(this.IsToEmitPopForExpr) {
+																stmtList.Add(new OpcodeStatement(this.currentRegionCode, System.Reflection.Emit.OpCodes.Pop));
+																IsToEmitPopForExpr = false;
+															}
+												.)
+			{ Stmt<out stmt>		(.	stmtList.Add(stmt); 
+															if(this.IsToEmitPopForExpr) {
+																stmtList.Add(new OpcodeStatement(this.currentRegionCode, System.Reflection.Emit.OpCodes.Pop));
+																IsToEmitPopForExpr = false;
+															}
+												.)
+		 }
+	 )
+	"}"										(.	stmt = new GlobalMethodStatement(methodName, type, this.ParaEnv[methodName], stmtList);	
+												 		this.EvalGoto(currentRegionCode); this.Mode = curMode; this.currentRegionCode = oldcurrentRegionCode;
+												.)
+. 
 
-Site<out Statement stmt>
-= SiteKeywords Ident<out methodName>
-"{"
-{ SiteOutBlockMethod<out stmt, out isOut>
 
-}
-"}"
-.
+Site<out Statement stmt>					(.	string methodName; var stmtList = new List<Statement>(); var configList = new List<Statement>(); .)
+=	 SiteKeywords Ident<out methodName>		(.	this.Environment[methodName] = new Dictionary<string, Symbol>(); currentRegionCode = methodName; bool isOut; .)
+	"{"
+		 { SiteOutBlockMethod<out stmt, out isOut>		
+		 															(.	stmtList.Add(stmt);if(!isOut) configList.Add(stmt); .)
+		 }
+	"}"															(.	stmt = new SiteMethodStatement(methodName, stmtList, configList);	.)
+. 
+
+
 
 SiteOutBlockMethod<out Statement stmt, out bool IsOut>
-
+																(.	PrepareGoto(); Statement stmtTmp; stmt = new DoNothingStatement(this.currentRegionCode);
+																		string tmp, blockName, blockName2 = ""; 
+																		IsOut = true; bool bCatch = false;
+																		var stmtList = new List<Statement>(); var catchList = new List<Statement>(); 
+																		stmt = null; 
+																.)
 =
-[configKeywords
-]
-Ident<out blockName>
-[ "." IdentHyphen<out blockName2>
-{ IdentHyphen<out tmp>
-}
-]
-( " = "
-(
-ExprStmt<out stmtTmp> [";"]
-| ( "{"
-ReturnStatements<out stmtTmp>
-"}"
-)
-)
-)
+	[configKeywords											(.	IsOut = false;	currentOutBlock = ""; .)
+	] 
+	Ident<out blockName>
+	[	"." IdentHyphen<out blockName2> 
+	{	IdentHyphen<out tmp>				(.	blockName2 += tmp; .)
+	}															(.	blockName += "." + blockName2; .)
+	]															(.	currentOutBlock = blockName; .)
+	(	"="
+			(
+		 ExprStmt<out stmtTmp>	[";"]		(.	if(stmtTmp is ExprStatement es) es.DiscardResult = false; stmtList.Add(stmtTmp); .)
+		 |	( "{" 
+				ReturnStatements<out stmtTmp>	(.	stmtList.Add(stmtTmp); .)
+			 "}"
+			 )
+		 )									(.	if(IsOut) {
+															stmt = new SiteOutBlock(this.currentRegionCode, blockName, stmtList); 
+												 		}
+														else {
+															stmt = new SiteConfigBlock(this.currentRegionCode, blockName, stmtList); 
+														}
+														this.EvalGoto(currentRegionCode + "." + currentOutBlock); 
+												.)
+	)											(.	currentOutBlock = "";	.)
 .
 
-IdentHyphen<out string s>
-= ident
-| "-"
+IdentHyphen<out string s>			(.	s = ""; string tmp = ""; .)
+=	 ident											(.	tmp += t.val; s = tmp; .)
+	| "-"												(.	tmp += t.val; s = tmp;	.)
 .
 
-AssignStmt<out Statement stmt>
-= IF (peek1.kind = = _inc | | peek1.kind = = _dec) SelfIncreaseDecrease<out stmt>
-| LocalAssignStmt<out stmt>
+AssignStmt<out Statement stmt>	(.	stmt = null; Token peek1 = Peek(1); .)
+=	IF	(peek1.kind == _inc || peek1.kind == _dec) SelfIncreaseDecrease<out stmt>
+ | LocalAssignStmt<out stmt> 
 .
 
 IfReturnBody<out Statement s>
-
+(. s = null; .)
 =
-IF(this.Mode = = Interpreter.Parser.CompileMode.Func)
-ReturnStmt<out s> [";"]
+	IF(this.Mode == Interpreter.Parser.CompileMode.Func)
+		ReturnStmt<out s> [";"]
 |
-IF(this.Mode = = Interpreter.Parser.CompileMode.Void)
-VoidReturnStmt<out s> [";"]
+	IF(this.Mode == Interpreter.Parser.CompileMode.Void)
+		VoidReturnStmt<out s> [";"]
 |
-(retOperator | returnKeywords | retKeywords)
-
+	(retOperator | returnKeywords | retKeywords)
+	(. throw new Exception(this.GetCurrentPosition() + "return/=> is not allowed in Expr/SiteConfig mode."); .)
 .
 
-IfBody<out Statement s>
+
+IfBody<out Statement s>     (. s = null; Statement tmp = null; Expression e = null; .)
 =
+	// Braced bodies (mode-aware)
+	IF(la.kind == _lbrace && this.Mode == Interpreter.Parser.CompileMode.Func) FuncBlock<out s>
+|	IF(la.kind == _lbrace && this.Mode == Interpreter.Parser.CompileMode.Void) VoidBlock<out s>
+|	BlockIf<out s>
 
-IF(la.kind = = _lbrace && this.Mode = = Interpreter.Parser.CompileMode.Func) FuncBlock<out s>
-| IF(la.kind = = _lbrace && this.Mode = = Interpreter.Parser.CompileMode.Void) VoidBlock<out s>
-| BlockIf<out s>
+	// --- no-brace, single-statement bodies ---
+|	IF(IsAssignment()) AssignStmt<out s> [";"]
+|	ExprStmt<out s> [";"]
+|	VarDecStmt<out s> [";"]
+|	gotoInvoke<out s> [";"]
+|	ContinueInvoke<out s> [";"]
+|	BreakInvoke<out s> [";"]
+|	TryStmt<out s>
 
-| IF(IsAssignment()) AssignStmt<out s> [";"]
-| ExprStmt<out s> [";"]
-| VarDecStmt<out s> [";"]
-| gotoInvoke<out s> [";"]
-| ContinueInvoke<out s> [";"]
-| BreakInvoke<out s> [";"]
-| TryStmt<out s>
-
-| IfStmt<out s>
-| IfReturnBody<out s>
+	// Allow nested if as a single statement body (enables dangling-else patterns)
+|	IfStmt<out s>
+|	IfReturnBody<out s>
 .
 
 IfTail<ref IfElse cur>
-
+(. Expression eElseIf = null; Statement sElseIf = null; IfElse node = null; Statement tmpElse = null; .)
 =
-{
-elseif "(" Expr<out eElseIf> ")"
-IfBody<out sElseIf>
-
-}
-[
-else
-IfBody<out tmpElse>
-
-]
+	{
+		elseif "(" Expr<out eElseIf> ")"
+			IfBody<out sElseIf>
+		(.  
+			if(this.IsToEmitPopForExpr) {
+				List<Statement> stmtList = new List<Statement>();
+				stmtList.Add(sElseIf);
+				stmtList.Add(new OpcodeStatement(this.currentRegionCode, System.Reflection.Emit.OpCodes.Pop));
+				sElseIf = new Block(this.currentRegionCode, stmtList);
+				IsToEmitPopForExpr = false;
+			}
+			eElseIf.Type = typeof(bool);
+			node = new IfElse(this.currentRegionCode, eElseIf, sElseIf);
+			cur.SetElse(node);
+			cur = node;
+		.)
+	}
+	[
+		else
+			IfBody<out tmpElse>
+		(.  
+			if(this.IsToEmitPopForExpr) {
+				List<Statement> stmtList = new List<Statement>();
+				stmtList.Add(tmpElse);
+				stmtList.Add(new OpcodeStatement(this.currentRegionCode, System.Reflection.Emit.OpCodes.Pop));
+				tmpElse = new Block(this.currentRegionCode, stmtList);
+				IsToEmitPopForExpr = false;
+			}
+			cur.SetElse(tmpElse);
+		.)
+	]
 .
+
 
 IfStmt<out Statement stmtIF>
-
+(.  IfElse stmt = null; Expression e; Statement sIf = null; IfElse cur = null; .)
 =
-if "(" Expr<out e> ")"
-IfBody<out sIf>
-
-IfTail<ref cur>
-
+	if "(" Expr<out e> ")"
+		IfBody<out sIf>
+		(.
+			if(this.IsToEmitPopForExpr) {
+				List<Statement> stmtList = new List<Statement>();
+				stmtList.Add(sIf);
+				stmtList.Add(new OpcodeStatement(this.currentRegionCode, System.Reflection.Emit.OpCodes.Pop));
+				sIf = new Block(this.currentRegionCode, stmtList);
+				IsToEmitPopForExpr = false;
+			}
+			e.Type = typeof(bool);
+			stmt = new IfElse(this.currentRegionCode, e, sIf);
+			cur = stmt;
+		.)
+		IfTail<ref cur>
+		(. stmtIF = stmt; .)
 .
 
-BlockIf<out Statement block>
-= "{"
-{
-(
-gotoInvoke<out stmt> [";"]
-| ContinueInvoke<out stmt> [";"]
-| BreakInvoke<out stmt> [";"]
-| ForStmt<out stmt>
-| IfStmt<out stmt>
-| WhileStmt<out stmt>
-| DoWhileStmt<out stmt>
-| TryStmt<out stmt>
-| VarDecStmt<out stmt> [";"]
-| IF(Peek(1).val = = ":") DeclareGoto<out stmt>
-| IF(IsAssignment()) AssignStmt<out stmt> [";"]
-| ExprStmt<out stmt> [";"]
-)
 
-}
-"}"
+
+BlockIf<out Statement block>	(.	Statement stmt; List<Statement> stmtList = new List<Statement>(); Expression e = null;	.)
+= "{" 
+	 { 
+		(
+			gotoInvoke<out stmt> [";"]
+		| ContinueInvoke<out stmt> [";"]
+		| BreakInvoke<out stmt> [";"]
+		| ForStmt<out stmt>
+		| IfStmt<out stmt>
+		| WhileStmt<out stmt> 
+		| DoWhileStmt<out stmt> 
+		| TryStmt<out stmt>
+		| VarDecStmt<out stmt> [";"]
+		| IF(Peek(1).val == ":") DeclareGoto<out stmt>
+		| IF(IsAssignment()) AssignStmt<out stmt> [";"]
+		| ExprStmt<out stmt> [";"]
+		)	
+		(.	
+			stmtList.Add(stmt); 
+			if(this.IsToEmitPopForExpr) {
+				stmtList.Add(new OpcodeStatement(this.currentRegionCode, System.Reflection.Emit.OpCodes.Pop));
+				IsToEmitPopForExpr = false;
+			}
+		.)
+	 } 
+	"}"	(.	block = new Block(this.currentRegionCode, stmtList); .)
 .
 
-BlockIfInner<out Statement block>
+BlockIfInner<out Statement block>	(.	Statement stmt; List<Statement> stmtList = new List<Statement>(); Expression e = null;	.)
 =
-{
-(
-gotoInvoke<out stmt> [";"]
-| ContinueInvoke<out stmt> [";"]
-| BreakInvoke<out stmt> [";"]
-| ForStmt<out stmt>
-| IfStmt<out stmt>
-| WhileStmt<out stmt>
-| DoWhileStmt<out stmt>
-| TryStmt<out stmt>
-| VarDecStmt<out stmt> [";"]
-| IF(Peek(1).val = = ":") DeclareGoto<out stmt>
-| IF(IsAssignment()) AssignStmt<out stmt> [";"]
-| ExprStmt<out stmt> [";"]
-)
-
-}
-
+	{
+		(
+			gotoInvoke<out stmt> [";"]
+		| ContinueInvoke<out stmt> [";"]
+		| BreakInvoke<out stmt> [";"]
+		| ForStmt<out stmt>
+		| IfStmt<out stmt>
+		| WhileStmt<out stmt>
+		| DoWhileStmt<out stmt>
+		| TryStmt<out stmt>
+		| VarDecStmt<out stmt> [";"]
+		| IF(Peek(1).val == ":") DeclareGoto<out stmt>
+		| IF(IsAssignment()) AssignStmt<out stmt> [";"]
+		| ExprStmt<out stmt> [";"]
+		)
+		(.	
+			stmtList.Add(stmt);
+			if(this.IsToEmitPopForExpr) {
+				stmtList.Add(new OpcodeStatement(this.currentRegionCode, System.Reflection.Emit.OpCodes.Pop));
+				IsToEmitPopForExpr = false;
+			}
+		.)
+	}
+	(. block = new Block(this.currentRegionCode, stmtList); .)
 .
 
-VarDecStmt<out Statement stmt>
-= VarDec<out e>
+
+VarDecStmt<out Statement stmt>	(.	Expression e = null; .)
+= VarDec<out e>									(.	stmt = new ExprStatement(this.currentRegionCode, e); .)
 .
 
-ReturnStmt<out Statement stmt>
+ReturnStmt<out Statement stmt>	(.	Expression e; .)
 =
-(returnKeywords | retOperator | retKeywords)
-Expr<out e>
+	(returnKeywords | retOperator | retKeywords)
+	Expr<out e>										(.	this.RecordFuncReturnType(e, this.GetCurrentPosition()); stmt = new ReturnStatement(this.currentRegionCode, e, this.Mode);	.) 
 .
 
-VarDec<out Expression e>
+
+
+
+VarDec<out Expression e>		(.	Type declaredType, newType_first; T2V t2v_first; 
+																List<Expression> lstExprs = new List<Expression>(); e = null; 
+																bool isIgnorable = false;
+														.)
 =
-(
-Typ<out declaredType>
-VarDesc<out t2v_first, out newType_first, out var typeConversion>
-
-{ ","
-VarDesc<out t2v_consecutive, out newType_consecutive, out typeConversion>
-}
-) | (
-ignoreAbleIdent
-[" = "] Expr<out var rhs>
-)
+	(
+		Typ<out declaredType>												(.	this.SetCurrentVarDeclType(declaredType);	.)
+		VarDesc<out t2v_first, out newType_first, out var typeConversion> 
+															(.	Action<T2V, Type, Type> guessType =	(t2v, newType, typeConverted) => {
+																		Expression varDecl; Type targetType = null;
+																		if(declaredType != null ) { // Explicit object type
+																			targetType = declaredType; 
+																		}
+																		else { // var
+																			targetType = newType; 
+																			if(targetType == null) {targetType = typeConverted;} 
+																			if(targetType == null) {targetType = typeof(object);} // Must have type for compiler local variable declaration
+																		}
+																		varDecl = t2v(targetType); 
+																		if(targetType != null) {varDecl.Type = targetType;}
+																		lstExprs.Add(varDecl);
+																	};
+																	guessType.Invoke(t2v_first, newType_first, typeConversion);
+															.)
+		{ ","											(.	T2V t2v_consecutive; Type newType_consecutive; .)
+			VarDesc<out t2v_consecutive, out newType_consecutive, out typeConversion>	(.	guessType.Invoke(t2v_consecutive, newType_consecutive, typeConversion); .)
+		}													(.	e = new ExpressionList(lstExprs); this.ClearCurrentVarDeclType(); .)
+	) | (
+		ignoreAbleIdent 					(.	isIgnorable = true; .)
+		["="] Expr<out var rhs>		(.	if(isIgnorable) { e = new ExpressionPop(this.currentRegionCode, rhs); IsToEmitPopForExpr = false; } this.ClearCurrentVarDeclType(); .)
+	)														
 .
 
-Typ<out Type ty>
-= "int"
-| "bool"
-| "string"
-| "double"
-| longKeywords
-| objectKeywords
-| varKeywords
-| (StringBuilderKeywords)
+Typ<out Type ty>							(.	ty = null; .)
+= "int"												(.	ty = typeof(int);	.)
+	| "bool"										(.	ty = typeof(bool);	 .)
+	| "string"									(.	ty = typeof(string); .)
+	| "double"									(.	ty = typeof(double); .)
+	| longKeywords							(.	ty = typeof(long); .)
+	| objectKeywords						(.	ty = typeof(object); .)
+	| varKeywords								(.	ty = null; .)
+	|	(StringBuilderKeywords)		(.	ty = typeof(System.Text.StringBuilder); .)
 .
 
-VarDesc<out T2V t2v, out Type newType, out Type typeConversion>
-= (
-Ident<out declaredVar>
-
-| ignoreAbleIdent
-)
-[
-( " = "
-| ( downloadassgn
-| downloadassgnWC
-)
-)
-
-Expr<out rhs>
-
-]
+VarDesc<out T2V t2v, out Type newType, out Type typeConversion>	(.	string declaredVar = null; t2v = null; newType = null; typeConversion = null; .)
+=	(
+		Ident<out declaredVar>				
+										(.	t2v = delegate(Type declaredType) { 
+													// Only declaration. No assignment
+													return new VarDecl(this.currentRegionCode, declaredVar, declaredType, this.GetCurrentPosition(), this); 
+												};	
+										.)
+	| ignoreAbleIdent	(.	if(la.val != "=") { throw new Exception(this.GetCurrentPosition() + " must have assignment."); }
+												declaredVar = Guid.NewGuid().ToString("N");
+												t2v = delegate(Type declaredType) { 
+													// Only declaration. No assignment
+													return new VarDecl(this.currentRegionCode, declaredVar, declaredType, this.GetCurrentPosition(), this); 
+												};	
+										.)
+	)
+	[									(.	Expression rhs = null; bool download = false; bool enforceWC = false; .)
+		(	"="						(.	download = false; .)
+			|	( downloadassgn			(.	enforceWC = true; .)
+				| downloadassgnWC
+			)							(.	download = true; .)
+		)
+		(.	this.IsWithinAssignment = true; .)
+		Expr<out rhs>		(.	// Declaration with assignment
+											bool inferredFromFunc = false;
+											Type funcReturnType = null; string funcName = null;
+											if(this.TryGetUserFuncReturnType(rhs, out funcReturnType, out funcName)) {
+												var targetType = this.CurrentVarDeclType;
+												if(targetType == null) {
+													if(funcReturnType != null && funcReturnType != typeof(object)) {
+														newType = funcReturnType;
+														inferredFromFunc = true;
+													}
+												} else if(!this.IsFuncReturnCompatible(funcReturnType, targetType)) {
+													throw new Exception(this.GetCurrentPosition() + "func " + funcName + " cannot be assigned to " + targetType.Name);
+												}
+											}
+											if(rhs is ExpressionNew) {
+												ExpressionNew eNew = rhs as ExpressionNew;
+												if(eNew.Type != null) newType = eNew.Type;
+											}
+											else if(rhs is TypeConverter) {
+												typeConversion =	(rhs as TypeConverter).Type;
+											}
+											else if(rhs is WebClientExp) {
+												newType = typeof(string);
+											}
+											else if(rhs is ExpressionNULL) {
+												newType = typeof(void); // indicates will be assigned when assignment is happening 
+											}
+											else if(rhs is DictionaryAccess) {
+												newType = typeof(object); 
+											}
+											else { if(rhs.Type != null && !inferredFromFunc) newType = rhs.Type; }
+											StoreLvalueExpression lhs =	new StoreLvalueExpression( this.currentRegionCode, declaredVar, false, this, this.GetCurrentPosition()); 
+											Assignment asg = new Assignment(this.currentRegionCode, lhs, rhs);
+											if(download) { asg = new Assignment(this.currentRegionCode, lhs,	new WebClientExp(this.currentRegionCode, rhs, this, enforceWC) ); }
+											t2v = delegate(Type declaredType) {	return new VarDecl(this.currentRegionCode, declaredVar, declaredType, asg, this.GetCurrentPosition(), this); }; 
+									.)
+		(.	this.IsWithinAssignment = false; .)
+	]
 .
 
-LocalAssignStmt<out Statement asg>
+LocalAssignStmt<out Statement asg>		
+									(. asg = null; Expression rhs = null; Expression lhs = null;
+										bool download = false; string varName = null, fieldName = null, keyname = null, listName = null;
+										List<string> subCoponentNames = new List<string>();
+										var isStaticProp = false;
+										Expression subscriptIndex = null;
+									.)
+=									(. this.IsWithinAssignment = true; .)
+	(	ident					(. varName = t.val; lhs = new StoreLvalueExpression(this.currentRegionCode, varName, this, this.GetCurrentPosition()); .)
+		[ lbrack Expr<out subscriptIndex> rbrack ]
+ |	(
+	 lbrack ident		(. keyname = t.val; lhs = new StoreLvalueDictionaryExpr(keyname); .)
+	 rbrack
+	 )
+ |	( "@" ident			(. fieldName = t.val; .)
+	 )
+ | ( "clr"
+		"." ident				(.	fieldName = t.val; 
+										isStaticProp = true; 
+										fieldName = ReplaceIdentWithImports(fieldName);
+									.)
+	)
+ )
 
+ {"." ident				(. subCoponentNames.Add(t.val); .)
+ }								(. bool enforceWC = false; .)
+
+(	'='							(. download = false; .)
+	|		(	downloadassgn 
+				 | downloadassgnWC		(. enforceWC = true; .)
+			)						(. download = true; .)
+)
+	Expr<out rhs>		(.
+								// Guard against null rhs on parse-error recovery to avoid NREs.
+								if(rhs == null) { rhs = new ExpressionNULL(); }
+							 if(subscriptIndex != null) {
+								 Expression arrayRef = new LvalueExpression(this.currentRegionCode, varName, this, this.GetCurrentPosition());
+								 asg = new SetElementAtStatement(this.currentRegionCode, arrayRef, subscriptIndex, rhs);
+							 }
+							 else if(subCoponentNames.Count == 0) {
+								 if(fieldName != null) { //field 
+									 asg = new ExprStatement(this.currentRegionCode, new StoreLvalueFieldExpr( Field(fieldName), rhs ) );
+								 }
+								 else {
+									if(download) { rhs = new WebClientExp(this.currentRegionCode, rhs, this, enforceWC); }
+									if(lhs.Type == null) {
+										lhs.Type = rhs.Type;
+										if (rhs.ArithmaticType != Expression.ArithmaticTypeEnum.Unknown) {
+											lhs.ArithmaticType = rhs.ArithmaticType; 
+										}
+										if	(lhs.ArithmaticType == Expression.ArithmaticTypeEnum.Unknown) {
+											Parser.SetArithmaticType(lhs, lhs.Type);
+										}
+									}
+									asg = new Assignment(this.currentRegionCode, lhs, rhs); 
+									if((varName != null && this.GetSymTable(this.currentRegionCode).ContainsKey(varName))
+										&&	(lhs.Type == typeof(void) 
+										||	(rhs.Type != null && rhs.Type != typeof(object) 
+										&& this.GetSymTable(this.currentRegionCode).ContainsKey(varName)
+										&&	(this.GetSymTable(this.currentRegionCode)[varName].type == null || this.GetSymTable(this.currentRegionCode)[varName].type == typeof(object)) ))
+										) {
+										this.GetSymTable(this.currentRegionCode)[varName].type = rhs.Type;
+										lhs.Type = rhs.Type;
+										if	(rhs.ArithmaticType != Expression.ArithmaticTypeEnum.Unknown) {
+											lhs.ArithmaticType = rhs.ArithmaticType;
+										}
+										if	(lhs.ArithmaticType == Expression.ArithmaticTypeEnum.Unknown) {
+											Parser.SetArithmaticType(lhs, lhs.Type);
+										}
+									}
+								}
+							}
+							else { 
+									if(!isStaticProp) {
+											// set a property
+										 Expression ePrimary = null;
+										 if(varName != null){
+											 ePrimary = new LvalueExpression(this.currentRegionCode, varName, this, this.GetCurrentPosition()); 
+											 Type typOfIdent = typeof(object);
+											 if(this.GetSymTable(this.currentRegionCode).ContainsKey(varName))
+												 typOfIdent = this.GetSymTable(this.currentRegionCode)[varName].type;
+											 if( typOfIdent != typeof(object) ) ePrimary = new TypeConverter(typOfIdent, ePrimary);
+										 }
+										 if(keyname != null) {ePrimary = new DictionaryAccess( keyname );}
+										 if(fieldName != null) {ePrimary = new FieldAccess( Field(fieldName) );}
+										 
+										 for(int i = 0; i < subCoponentNames.Count - 1; i++) {
+											 var propName = subCoponentNames[i];
+											 var subExpr = new SubComponentPropExpr(ePrimary, propName);
+											 if(ePrimary != null && ePrimary.Type != null && ePrimary.Type != typeof(object)) {
+												 PropertyInfo pi = null;
+												 if(Interpreter.Framework.ObjectLibrary.LookupPropertyInfo(
+														 ePrimary.Type,
+														 propName,
+														 BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase,
+														 out pi)) {
+													 subExpr.BindProperty(pi);
+												 }
+											 }
+											 ePrimary = subExpr;
+										 }
+										 var setPropName = subCoponentNames[subCoponentNames.Count - 1];
+										 var setExpr = new SubComponentSetPropExpr( ePrimary,			//left handside
+											 setPropName, // property name
+											 rhs );
+										 if(ePrimary != null && ePrimary.Type != null && ePrimary.Type != typeof(object)) {
+											 PropertyInfo pi = null;
+											 if(Interpreter.Framework.ObjectLibrary.LookupPropertyInfo(
+													 ePrimary.Type,
+													 setPropName,
+													 BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase,
+													 out pi)) {
+												 setExpr.BindProperty(pi);
+											 }
+										 }
+										 asg = new ExprStatement(this.currentRegionCode, setExpr);
+									}
+									// Set static property
+									else {
+										var staticClassTypeName = fieldName;
+										int subComponentIndex = -1;
+										if(!Interpreter.Framework.ObjectLibrary.TryFindType(fieldName, out var clrType)) {
+											var eSubComponents = subCoponentNames.GetEnumerator();
+											while(eSubComponents.MoveNext()) {
+												subComponentIndex++;
+												staticClassTypeName += "." + eSubComponents.Current;
+												if(Interpreter.Framework.ObjectLibrary.TryFindType(staticClassTypeName, out clrType)) { break; }
+											}
+										}
+										if(clrType == null) {
+											throw new Exception("Cannot find CLR Type: " + staticClassTypeName);
+										}
+										if(subComponentIndex != subCoponentNames.Count - 2)  {
+											throw new Exception("Unsupported cascade property setter on CLR: " + clrType.FullName);
+										}
+										var isStaticClass = clrType.IsAbstract && clrType.IsSealed;
+										if(!isStaticClass) {
+											throw new Exception("Unsupported static class property setter on CLR: " + clrType.FullName);
+										}
+										var binding = System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static  | BindingFlags.DeclaredOnly | System.Reflection.BindingFlags.IgnoreCase;
+										PropertyInfo staticPi = clrType.GetProperty(subCoponentNames[subCoponentNames.Count - 1], binding);
+										if(staticPi == null) {
+											throw new Exception("Static property " + subCoponentNames[subCoponentNames.Count - 1] + ", is not found on CLR " +  clrType.FullName);
+										}
+										asg = new ExprStatement(this.currentRegionCode, new ClrStaticClassPropertySetterExpr(staticPi, rhs));
+									}
+							 }
+							 this.IsWithinAssignment = false; 
+						.)
+. 
+
+SelfIncreaseDecrease<out Statement asg>		(.	asg = null; Expression rhs = null; Expression e = null; 
+											 Expression lhs = null; Operator op = Operator.Add; string fieldName=null;
+											 Type typeConversion = null;
+											.)
 =
-( ident
-[ lbrack Expr<out subscriptIndex> rbrack]
-| (
-lbrack ident
-rbrack
-)
-| ( "@" ident
-)
-| ( "clr"
-"." ident
-)
-)
-
-{"." ident
-}
-
-( ' = '
-| ( downloadassgn
-| downloadassgnWC
-)
-)
-Expr<out rhs>
-.
-
-SelfIncreaseDecrease<out Statement asg>
-=
-( ident
-| ( "@"
-ident
-)
-| ( lbrack ident
-rbrack
-)
-)
-( inc
-| dec
-)
+	(	ident						(.	lhs = new StoreLvalueExpression(this.currentRegionCode, t.val, this, this.GetCurrentPosition()); 
+								 				e = new LvalueExpression(this.currentRegionCode, t.val, this, this.GetCurrentPosition());
+										.)
+	|	( "@" 
+		ident									(.	fieldName = t.val; e = new FieldAccess( Field(t.val) ); .)
+	)
+	|	(	lbrack ident				(.	lhs = new StoreLvalueDictionaryExpr(t.val); .)
+			rbrack
+	)
+ ) // end of the variable
+	(	inc							(.	op = Operator.AddInt; .) 
+	 | dec						(.	op = Operator.SubInt;	.) 
+	)									(.	e.Type = typeof(int);
+											 rhs = new BinOp(op, e, new Constant<int>(1)); 
+											 rhs.Type = typeof(int);
+											 if(fieldName != null) asg = new ExprStatement(this.currentRegionCode, new StoreLvalueFieldExpr( Field(fieldName),rhs )); 
+											 else {asg = new Assignment(this.currentRegionCode, lhs, rhs); }
+										.)
 .
 
 Ident<out String name>
-= ident
+= ident							(.	name = t.val; .)
 .
 
-ExprStmt<out Statement stmt>
+  ExprStmt<out Statement stmt>	(.	Expression e; .)
+  =										(.	this.IsWithinExprStmt = true;	.)
+  	Expr<out e>				(.	var exprStmt = new ExprStatement(this.currentRegionCode, e);
+  												exprStmt.DiscardResult = true;
+  												stmt = exprStmt;
+  												IsToEmitPopForExpr = false;
+  												this.IsWithinExprStmt = false; 
+  										.)
+  .
+
+Expr<out Expression e>						(. Expression left,right,e2,e3; ExprDepth++; .)
 =
-Expr<out e>
+	ConExpr<out left>									(. e = left; .)
+	{ "->" ConExpr<out right>				(. e = new BinOp(Operator.GetProp, e, right); .) }
+	['?' ConExpr<out e2>
+	 ':' Expr<out e3>						(. e = new Condition(e, e2, e3); .)
+	]
+													(. ExprDepth--; .)
 .
 
-Expr<out Expression e>
-=
-ConExpr<out left>
-{ "->" ConExpr<out right>}
-['?' ConExpr<out e2>
-':' Expr<out e3>
-]
 
-.
+	
+ConExpr<out Expression e>			(.	e = null;	.)
+= LogOrExpr<out e> .
 
-ConExpr<out Expression e>
-= LogOrExpr<out e>.
 
-LogOrExpr<out Expression e>
+LogOrExpr<out Expression e>		(.	Expression e2; .)
 = LogAndExp<out e>
-{ " | | " LogAndExp<out e2>
-}
+	{ "||" LogAndExp<out e2>		(.	e = new BinOp(Operator.Or, e, e2); .) 
+	} 
 .
 
-LogAndExp<out Expression e>
+LogAndExp<out Expression e>		(.	Expression e2; .)
 = EqualExp<out e>
-{ "&&" EqualExp<out e2>
-}
+	{ "&&" EqualExp<out e2>			(.	e = new BinOp(Operator.And, e, e2); .)
+	}
 .
 
-EqualExp<out Expression e>
+EqualExp<out Expression e>		(.	Expression e2; Operator op; .) 
 = RelationExp<out e>
-{ ( " = = "
-| "! = "
-)
-RelationExp<out e2>
-}
+	{	( "=="										(.	op = Operator.Eq; .)
+	| "!="											(.	op = Operator.Ne; .)
+	) 
+	RelationExp<out e2>					(.	e = new BinOp(op, e, e2); .)
+	} 
 .
 
-RelationExp<out Expression e>
+RelationExp<out Expression e>		(.	Expression e2; Operator op; .)
 = AddExp<out e>
-{ (
-"<"
-| ">"
-| "< = "
-| "> = "
-)
-AddExp<out e2>
-}
+	{	(	 
+		"<"													(.	op = Operator.Lt; .)
+	| ">"													(.	op = Operator.Gt; .)
+	| "<="												(.	op = Operator.Le; .)
+	| ">="												(.	op = Operator.Ge; .) 
+	) 
+	AddExp<out e2>						(.	e = new BinOp(op, e, e2); .)
+	}
 .
 
-AddExp<out Expression e>
+
+AddExp<out Expression e>		(.	Expression e2; Operator op; .)
 = MultExp<out e>
-{
-(
-"+"
-| "-"
-| "+i"
-| "-i"
-)
-MultExp<out e2>
-}
+	{ 
+	( 
+	 "+"								(.	op = Operator.Add; .) 
+	| "-"								(.	op = Operator.Sub; .)
+	| "+i"							(.	op = Operator.AddInt; .) 
+	| "-i"							(.	op = Operator.SubInt; .)
+	)
+	MultExp<out e2>				(.	e = new BinOp(op, e, e2); .)
+	} 
 .
 
-MultExp<out Expression e>
-= StrConcatExp<out e>
-{
-( "*"
-| "/"
-| "%"
-| " | "
-| "*i"
-| "\\"
-)
-StrConcatExp<out e2>
-}
+MultExp<out Expression e>		(.	Expression e2; Operator op = Operator.Unknown; .)
+= StrConcatExp<out e>	 
+	{ 
+		(	"*"											(.	op = Operator.Mul; .)
+		|	"/"											(.	op = Operator.Div; .)
+		|	"%"											(.	op = Operator.Mod; .)
+		|	"|"											(.	op = Operator.BitOr; .)
+		|	"*i"										(.	op = Operator.MulInt; .)
+		|	"\\"										(.	op = Operator.DivInt; .)
+		) 
+		StrConcatExp<out e2>			(.	if(op == Operator.Unknown) { throw new Exception(this.GetCurrentPosition() + "Cannot find an operator"); }
+																	e = new BinOp(op, e, e2); 
+															.)
+	} 
 .
 
-StrConcatExp<out Expression e>
-= UnaryExp<out e>
-{
+StrConcatExp<out Expression e>		(.	Expression e2; Operator op = Operator.Unknown; .)
+= UnaryExp<out e>	 
+	{ 
 
-"&"
-UnaryExp<out e2>
-}
+		"&"														(.	op = Operator.StringConcat; .) 
+		UnaryExp<out e2>							(.	if(op == Operator.Unknown) { throw new Exception(this.GetCurrentPosition() + "Cannot find string concatenation operator"); }
+																			e = new BinOp(op, e, e2); 
+																			if(StringConcatOptimizer.TryExtractStringConcat(e, out StringConcatExpr stringConcatExpr)) { e = stringConcatExpr; } 
+																	.)
+	} 
 .
 
-UnaryExp<out Expression e>
-= "-" UnaryExp<out eUnary>
-| not UnaryExp<out eUnary>
-| IF (la.kind = = _ident && la.val ! = null && la.val = = "await") ident Primary<out eUnary>
-| Primary<out e>
+
+UnaryExp<out Expression e>				(.	Expression eUnary; e = null; .)
+= "-" UnaryExp<out eUnary>			(.	e = new UnOp(Operator.Neg, eUnary);	 .)
+	| not UnaryExp<out eUnary>			(.	e = new UnOp(Operator.Not, eUnary);	 .)
+	| IF (la.kind == _ident && la.val != null && la.val == "await") ident Primary<out eUnary>	(.	e = new AwaitExpr(eUnary, GetCurrentPosition()); .)
+	| Primary<out e>
 .
 
 PrimaryGlobalField<out Expression e>
-=
-"@" ident
+= 
+	"@" ident												(.	e = new FieldAccess( Field(t.val) ); .)
 .
 
 PrimaryDictionary<out Expression e>
-=
-lbrack ident
-rbrack
+= 
+	lbrack ident										(.	e = new DictionaryAccess( t.val ); .)
+	rbrack 
 .
 
 PrimaryLeftVal<out Expression e, out Type typOfIdent>
 =
-ident
+ident							(.	
+										e = new LvalueExpression(this.currentRegionCode, t.val, this, this.GetCurrentPosition()); 
+										if(this.GetSymTable(this.currentRegionCode).ContainsKey(t.val)) {
+											typOfIdent = this.GetSymTable(this.currentRegionCode)[t.val].type;
+										}
+										else {
+											typOfIdent = typeof(object); //might be as a parameter
+										}
+									.) 
 .
 
-Primary<out Expression e>
-=
-
-[IF (la.kind = = _lpar && IsTypeConversion(Peek(1).kind)) (
-IF (TypeConversionKeywords[Peek(1).kind])"(" Typ<out typeConversion> ")"
-| ("(" clr "."
-ident
-{ ANY
-}
-")")
-)]
-
-(
-(
-( "(" Expr<out e> ")")
-| (
-(
-(
-IF (IsDictionaryAccess()) PrimaryDictionary<out e>
-
-| ArrayLiteral<out e>
-)
-| PrimaryGlobalField<out e>
-| ( IF (IsMethod()) MethodInvocation<out e>
-| PrimaryLeftVal<out e, out typOfIdent>
-)
-| Constant<out e>
-| ( clr
-"." Ident<out tmpName>
-{ "."
-( IF(!IsClrMethod())
-( ident
-)
-|
-( ident
-"("
-[
-ParamList<out clrParamList>
-]
-")"
-)
-)
-}
-)
-)
-)
-
-)
-
-(
-
-{
-ElementAt<ref e> |
-(
-( "."
-| ".."
-)
-Ident<out name>
-[ "("
-[
-ParamList<out parList>
-]
-")"
-]
-
-)
-}
-)
-)
+Primary<out Expression e>			(.		e = null; string fieldName = null; 
+																Type typeTarget = null, typeConversion = null, typOfIdent = typeof(object);
+																int subComponentTimes = 0; bool isEnforceClrSubComponent = false;
+															.)
+= 
+	// Start of type conversion
+	[IF	(la.kind == _lpar && IsTypeConversion(Peek(1).kind))	(
+		IF	(TypeConversionKeywords[Peek(1).kind] )"(" Typ<out typeConversion> ")"
+		 |	("(" clr "."						(.	string clrName = ""; .)
+			ident								(.	clrName += t.val; .)
+			{ ANY								(.	clrName += t.val; .)
+			}										(.	clrName = ReplaceIdentWithImports(clrName);
+															if(!Interpreter.Framework.ObjectLibrary.TryFindType(clrName, out typeConversion)) {
+																throw new Exception(this.GetCurrentPosition() + " CLR Type: " + clrName + " not found.");
+															}
+													.)
+			 ")" )
+	)]											(.	if(typeConversion != null) { typOfIdent = typeConversion; } .)
+	// End of type conversion
+	(	
+		(
+			( "(" Expr<out e> ")" )				(.	typOfIdent = e.Type ?? typeof(object); .)
+		|	( // Start of primary
+				( 
+					(
+						IF (IsDictionaryAccess()) PrimaryDictionary<out e>		
+																			(.	isEnforceClrSubComponent = true; 
+																				// Dictionary access yields the stored value (object), not the dictionary itself.
+																				if(typeConversion == null) { e.Type = typeof(object); } 
+																		.)
+					|	ArrayLiteral<out e>
+					)
+				|	PrimaryGlobalField<out e>	(.	isEnforceClrSubComponent = true; if(typeConversion == null) { e.Type = typeof(object); }	.)
+				|	( IF	(IsMethod()) MethodInvocation<out e>
+						| PrimaryLeftVal<out e, out typOfIdent>		(.	if( typOfIdent != typeof(object) )	e = new TypeConverter(typOfIdent, e); .)
+					)
+				|	Constant<out e>
+				|	(	clr											(.	string clrName = ""; string tmpName = null; 
+																				string posi = this.GetCurrentPosition(); 
+																				Type clrType = null; 
+																				var lstSubProperties = new List<string>(); 
+																		.)
+					"." Ident<out tmpName>		(.	clrName += t.val; 
+																			clrName = this.ReplaceIdentWithImports(clrName); 
+																			if(clrName != t.val) { 
+																				if(!Interpreter.Framework.ObjectLibrary.TryFindType(clrName, out clrType)) {
+																					throw new Exception(GetCurrentPosition() + "CLR Type " + clrName + " is not found");
+																				}
+																				else { clrName = string.Empty; }
+																			}
+																		.)
+					{ "."												(.	if(clrType == null) clrName += t.val; .)
+						( IF(!IsClrMethod()) 
+							( ident								(.	clrName += t.val; 
+																			// Try to parse the CLR type, if found, starts from property parsing
+																			if(clrType == null) { 
+																				if(Interpreter.Framework.ObjectLibrary.TryFindType(clrName, out clrType)) clrName = string.Empty; // From now on, the following ".ident" will be subcomponents of the clrExpr
+																			} 
+																			else 
+																			{ 
+																				if(e == null) { // the property of static CLR class e.g. DateTime.Now
+																					string staticPropName = t.val;
+																					var isStaticClass = clrType.IsAbstract && clrType.IsSealed;
+																					var binding = BindingFlags.Public | BindingFlags.IgnoreCase | BindingFlags.Static;
+																					if(isStaticClass) { binding = binding | BindingFlags.DeclaredOnly; }
+																					PropertyInfo staticPi = clrType.GetProperty(staticPropName, binding);
+																					if(staticPi != null) e = new ClrStaticPropertyExpr(staticPi); 
+																					if(e == null) {
+																						FieldInfo staticFi = clrType.GetField(staticPropName, BindingFlags.Public | BindingFlags.IgnoreCase | BindingFlags.Static);
+																						if(staticFi != null) e = new ClrStaticFieldExpr(staticFi); 
+																					}
+																					if(e == null ) { // nested enum, e.g.: System.Environment.SpecialFolder
+																						if(GetNestedEnum(clrType, t.val, out var enumType)) { e = new ClrNestedEnumDefinitionExpr(enumType); e.Type = enumType; }
+																					}
+																					if(e == null) throw new Exception(GetCurrentPosition() + "CLR " + staticPropName + " is not a static property or field of " + clrType.FullName);
+																				}
+																				else { // the property of CLR object
+																					if(e is ClrNestedEnumDefinitionExpr) { // nested enum, e.g.: System.Environment.SpecialFolder
+																						var nestedEnumExpr = e as ClrNestedEnumDefinitionExpr;
+																						if(!Enum.IsDefined(nestedEnumExpr.EnumType, t.val)) {
+																							throw new Exception(GetCurrentPosition() + "CLR " + t.val + " is not a valid value of " + nestedEnumExpr.EnumType.FullName);
+																						}
+																						e = new ClrNestedEnumMemberExpr(nestedEnumExpr, t.val); e.Type = nestedEnumExpr.Type;
+																					}
+																					else {
+																						string propName = t.val;
+																						Type currentType = e.Type; PropertyInfo pi = currentType.GetProperty(propName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | BindingFlags.IgnoreCase);
+																						if(pi == null) { throw new Exception(GetCurrentPosition() + "CLR " + propName + " is not a property of " + currentType.FullName); }
+																						var subExpr = new SubComponentPropExpr(e, pi.Name); subExpr.BindProperty(pi); e = subExpr;
+																					}
+																				}
+																			} 
+													 					.)
+							) // end of property
+						 | // Start of method
+						( ident						(.	
+																	if(clrType == null) {
+																		if(clrName.EndsWith("..")) { clrName = clrName.Substring(0, clrName.Length - 2); }
+																		if(clrName.EndsWith(".")) { clrName = clrName.Substring(0, clrName.Length - 1); }
+																		if(Interpreter.Framework.ObjectLibrary.TryFindType(clrName, out clrType)) clrName = string.Empty;
+																		else { throw new Exception(posi + "CLR type " + clrName + " not found"); }
+																	}
+																	else {
+																		if(clrType == null) { throw new Exception(posi + "CLR method " + clrName + " not found"); }
+																	}
+																	List<Expression> clrParamList = new List<Expression>(); 
+																	string methodName = t.val; MethodInfo mi = null; 
+															.)
+							"("								(.	bool isWithinExprStmt = this.IsWithinExprStmt; .)
+							[									(.	this.IsWithinExprStmt = false; .)
+								ParamList<out clrParamList> 
+							]								(.	this.IsWithinExprStmt = isWithinExprStmt;
+																	Type currentType = null;
+																	if(e == null) {
+																		currentType = clrType;
+																		var isStaticClass = clrType.IsAbstract && clrType.IsSealed;
+																		var binding = System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.IgnoreCase;
+																		if(isStaticClass) { binding = binding | BindingFlags.DeclaredOnly; }
+																		if(Interpreter.Framework.ObjectLibrary.LookupMethodInfo(currentType, methodName, clrParamList, binding, out mi)) {
+																			e = new ClrStaticMethodExpr(clrParamList, mi);
+																		}
+																		else throw new Exception(GetCurrentPosition() + "CLR static method " + methodName + " is not found in " + currentType.FullName);
+																	}
+																	else {
+																		currentType = e.Type;
+																		if(currentType == typeof(void)) throw new Exception(GetCurrentPosition() + "CLR cannot call method " + methodName + " on void type");
+																		mi = null;
+																		// Find clr method to call as subcomponent
+																		if(Interpreter.Framework.ObjectLibrary.LookupMethodInfo(currentType, methodName, clrParamList, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.IgnoreCase, out mi)) {
+																		var subExpr = new SubComponentMethodExpr(e, clrParamList, methodName);
+																			subExpr.BoundMethod = mi;
+																			subExpr.Type = mi.ReturnType == typeof(void) ? typeof(object) : mi.ReturnType;
+																			Parser.SetArithmaticType(subExpr, subExpr.Type);
+																			e = subExpr;
+																		}	
+																		// Find framework method to call as extension method
+																		else if(e.Type != null && Interpreter.Framework.ObjectLibrary.LookupFrameworkMethodCalledAsExtensionMethod(methodName, clrParamList, out mi)) {
+																			var lstOfParameters = new List<Expression>();
+																			lstOfParameters.Add(e);
+																			foreach(var parameter in clrParamList) {
+																				lstOfParameters.Add(parameter);
+																	 		}
+																			e = new SystemMethodInvoke(mi, lstOfParameters.ToArray());
+																			e.Type = mi.ReturnType; Parser.SetArithmaticType(e, e.Type);
+																	 }
+																	 else { throw new Exception(GetCurrentPosition() + "CLR " + methodName + " is not found in " + currentType.FullName); }
+																 }
+															.)
+							 ")"
+						 )		// end of method	 
+						 )	 // end of clr sub-component
+					 }							(.	if(clrType == null) {throw new Exception(posi + "CLR Type " + clrName + " not found"); }
+															if(e.Type != typeof(void)) {TellToEmitPop();} .)
+					)		// end of clr 
+				) 
+			) // End of primary		
+										(.	// Defer type conversion to the final TypeConverter wrapper.
+											// Do not override e.Type here; it must reflect the actual stack type.
+										.)
+		) // end of "(" Expr ")" | Primary
+												(.	if(typeConversion != null) { e = new TypeConverter(typeConversion, e); typOfIdent = typeConversion; } .)
+		// The element and sub-component of Primary
+		(
+			(.	bool bIsMethod = false;
+				string name = "";
+				subComponentTimes++;
+				List<Expression> parList = null;
+				string lastEval;
+				Type typePrimaryForSubcomponent = typeConversion ?? e.Type;
+				bool isTokenEnforcingClrMethod = false;
+			.)
+			{
+				ElementAt<ref e> | 
+				( // Sub-component
+					( "."						(.	isTokenEnforcingClrMethod = false; .)
+					| ".."						(.	isTokenEnforcingClrMethod = true; .)
+					)
+					Ident<out name>		(.	parList = new List<Expression>(); bIsMethod = false; .)
+					[ "("							(.	bool isWithinExprStmt = this.IsWithinExprStmt; bIsMethod = true; .)
+						[								(.	this.IsWithinExprStmt = false; .)
+							ParamList<out parList>
+						]
+						")"							(.	this.IsWithinExprStmt = isWithinExprStmt; .)
+					]
+														(.	this.ApplySubComponentStep(
+																ref e,
+																ref typOfIdent,
+																ref subComponentTimes,
+																name,
+																parList,
+																isTokenEnforcingClrMethod,
+																bIsMethod
+															);
+														.)
+				) // end of sub-component
+			}
+		) // end of element and sub-component
+	)
 .
 
 ElementAt<ref Expression e>
 =
-lbrack
-Expr<out eIndex>
-rbrack
+	lbrack												(.	Expression eIndex; .)
+	Expr<out eIndex>							(.	e = new ElementAtExpr(e, eIndex); .)
+	rbrack
 .
 
-Constant<out Expression e>
-=
-String<out s>
-| Integer<out n, out e>
-| Long<out l, out e>
-| Double<out d>
-| thisKeywords
-| SiteConfigKeywords
-| nullKeywords
-| falseKeywords
-| trueKeywords
-| urlKeywords
-| clientBags
-| DateTime<out e>
-| New<out e>
+Constant<out Expression e>	(.	e = null;	int n = 0; long l = 0; double d; Type arithmaticTyp = null; .)
+=														(.	string s = ""; .)
+	String<out s>							(.	e = new Constant<string>(s); .)
+	| Integer<out n, out e>				(. /* Integer production now sets e directly */ .)
+	| Long<out l, out e>					(. /* Long production now sets e directly */ .)
+	| Double<out d>						(.	e = new Constant<double>(d); SetArithmaticType(e, typeof(double)); .)
+	| thisKeywords						(.	e = new ExpressionEnd(); .)
+	| SiteConfigKeywords			(.	e = new ExpressionSiteConfig(); .)
+	| nullKeywords						(.	e = new ExpressionNULL(); .)
+	| falseKeywords						(.	e = new Constant<bool>(false); .)
+	| trueKeywords						(.	e = new Constant<bool>(true); .)
+	| urlKeywords							(.	e = new ExpressionUrl(); .)
+	| clientBags							(.	e = new WebClientBags(t.val); .)
+	| DateTime<out e>
+	| New<out e>
 .
 
-DateTime<out Expression e>
-= nowKeywords
-| dateKeywords
+DateTime<out Expression e>	(.	e = null; .)
+=	 nowKeywords				(.	e = new ConstantDateTime(0); .)
+	| dateKeywords			(.	e = new ConstantDateTime(1); .)
 .
 
-Integer<out int val, out Expression e>
-= number
+Integer<out int val, out Expression e>		(.	long longVal; .)
+= number					(.
+													// Try parsing as int first; if overflow, parse as long
+													if (long.TryParse(t.val, out longVal)) {
+														if (longVal >= int.MinValue && longVal <= int.MaxValue) {
+															val = (int)longVal;
+															e = new Constant<int>(val);
+															SetArithmaticType(e, typeof(int));
+														} else {
+															val = 0; // dummy value for backward compat
+															e = new Constant<long>(longVal);
+															SetArithmaticType(e, typeof(long));
+														}
+													} else {
+														throw new Exception(this.GetCurrentPosition() + " Invalid number literal: " + t.val);
+													}
+												.)
 .
 
 Double<out double val>
-= double
+= double					(.	val = Convert.ToDouble(t.val.Replace("d", "")); .)
 .
 
 Long<out long val, out Expression e>
-= longNumber
+= longNumber				(.	val = Convert.ToInt64(t.val.Replace("l", ""));
+													e = new Constant<long>(val);
+													SetArithmaticType(e, typeof(long));
+												.)
 .
 
-String<out string val>
-= ( stringCon
-)
+String<out string val>		(.	var str = new System.Text.StringBuilder(); string s = null; .)
+= (	stringCon							
+	)												(.	s = t.val; .)
 
+													(.	
+													bool isVerbatim = s[0] == '@', isAnyTextMode = s.StartsWith("<<<") && s.EndsWith(">>>"); 
+													bool isNormalMode = !isVerbatim && !isAnyTextMode;
+													if(isNormalMode) {s = s.Substring(1); s = s.Substring(0, s.Length - 1); }
+													if(isVerbatim) {s = s.Substring(2); s = s.Substring(0, s.Length - 1); }
+													if(isAnyTextMode) {s = s.Substring(3); s = s.Substring(0, s.Length - 3); }
+
+													// Process contents with delimiters
+													if(!isAnyTextMode) {
+														if(isNormalMode) {
+															for(int i=0; i < s.Length; i++) {
+																if(s[i] == '\\') { 
+																	if(i == s.Length - 1) throw new Exception("Wrong string format");
+																	switch(s[i + 1]) {
+																	case '0': str.Append("\0"); i++; continue;
+																	case 'a': str.Append("\a"); i++; continue;
+																	case 'b': str.Append("\b"); i++; continue;
+																	case 'f': str.Append("\f"); i++; continue;
+																	case 'r': str.Append("\r"); i++; continue;
+																	case 'n': str.Append("\n"); i++; continue;
+																	case 't': str.Append("\t"); i++; continue;
+																	case 'v': str.Append("\v"); i++; continue;
+																	case '"': str.Append("\""); i++; continue;
+																	case '\\': str.Append("\\"); i++; continue;
+																	}
+																	str.Append("\\" + s[i + 1]);
+																	i++; 
+																}
+																else { str.Append(s[i]); }
+															}
+														} // not isVerbatim
+														else {
+															for(int i=0; i < s.Length; i++) {
+																if(s[i] == '"') { 
+																	if(i == s.Length - 1) throw new Exception(this.GetCurrentPosition() + " Wrong string format");
+																	if(s[i+1] != '"') throw new Exception(this.GetCurrentPosition() + " String quote expected, but '" + s[i+1] + "' was given");
+																	str.Append("\"");
+																	i++; 
+																}
+																else { str.Append(s[i]); }
+															}
+														}
+													}
+													else {
+														int start = 0;
+														int end = s.Length - 1;
+
+														if (start >= 0 && end > start)
+														{
+																while (end > start && ( s[start] == ' ' || s[start] == '\t' )) { start++; }
+																while (end > start && ( s[end] == ' ' || s[end] == '\t' )) { end--; }
+
+																str.Append(s, start, end - start + 1);
+														}
+														else if(string.IsNullOrEmpty(s)) {  }
+														else {
+															throw new Exception(this.GetCurrentPosition() + " Wrong free text string format");
+														}
+													}
+													val = str.ToString() ;	
+										.)
 .
 
-New<out Expression e>
-= new (
-(
-clr "." ident
-{ ANY
-}
+New<out Expression e>			(.	string str = ""; e = null; Type typOfIdent; Expression eLib = null;List<Expression> param = new List<Expression>(); .)
+= new	(
+	(
+		clr "." ident						(.	str += t.val; .)
+		{ ANY										(.	str += t.val; .)
+		}												(.	Type objType = null;
+															str = ReplaceIdentWithImports(str);
+															if(!Interpreter.Framework.ObjectLibrary.TryFindType(str, out objType)) {
+																throw new ArgumentException("New(): CLR " + str + " not found");
+															}
+														.)
+														(.	eLib = new Constant<string>(str); eLib.Type = objType; Parser.SetArithmaticType(eLib, eLib.Type); .)
+			
 
-"("
-[
-ParamList<out param>
-]
-")"
-)
-| (
-"{"
-ident
-[" = " | ":"]
-Expr<out exprPropertyVal>
+	"("									(.	bool isWithinExprStmt = this.IsWithinExprStmt; .)
+		[									(.	this.IsWithinExprStmt = false; .)
+			ParamList<out param> 
+		] 
+	")"									(.	this.IsWithinExprStmt = isWithinExprStmt; e = new ExpressionNew(eLib, param, GetCurrentPosition()); .)
+	) // end of clr type
+|	(									(.	bool isWithinExprStmt = this.IsWithinExprStmt; 
+												List<Expression> values = new List<Expression>();
+												List<string> props = new List<string>(); 
+												Expression exprPropertyVal = null;
+											.)
+		"{" 
+			ident 											(.	props.Add(t.val); .)
+			["=" | ":"]									(.	isWithinExprStmt = this.IsWithinExprStmt; this.IsWithinExprStmt = false; .)
+			Expr<out exprPropertyVal> 	(.	values.Add(exprPropertyVal);	this.IsWithinExprStmt = isWithinExprStmt; .)
 
-"}"
-)
+			(.	// allow optional trailing comma: { "," item } with a break when next is "}"
+				while (la.kind == _comma) {
+					Get();										// consume comma
+					if (la.kind == _rbrace) break;	// trailing comma -> stop
+
+					Expect(_ident);							// property name
+					props.Add(t.val);
+
+					if (la.kind == _assgn || la.kind == _colon) Get();	// optional "=" or ":"
+
+					isWithinExprStmt = this.IsWithinExprStmt;
+					this.IsWithinExprStmt = false;
+
+					exprPropertyVal = null;
+					Expr(out exprPropertyVal);
+
+					values.Add(exprPropertyVal);
+					this.IsWithinExprStmt = isWithinExprStmt;
+				}
+			.)
+		"}"														(.	e = new ExpressionNewAnonymousObject(props, values); .)
+	)
 )
 .
 
 ArrayLiteral<out Expression e>
-= lbrack
-[ ArrayElements<out items>
-]
-rbrack
+=	lbrack							(.	ExprList items = new ExprList();	.)
+		[	ArrayElements<out items>
+		]
+	rbrack							(.	e = new ArrayListLiteralExpr(items); e.Type = typeof(System.Collections.ArrayList);	.)
 .
 
-ArrayElements
-= Expr<out parameter>
-
+ArrayElements<. out ExprList parList .>		(. parList = new ExprList(); Expression parameter = null; .)
+=	Expr<out parameter>											(. parList.Add(parameter); .)
+	(.																			// with an LL(1) / Coco-R style generated loop, { comma Expr } is typically compiled as:
+																					// ¡°while next token is comma, consume it, then parse an Expr¡±
+		while (la.kind == _comma) {
+			Get();															// consume comma
+			if (la.kind == _rbrack) break;			// trailing comma: allow it and stop
+			parameter = null;
+			Expr(out parameter);
+			parList.Add(parameter);
+		}
+	.)
 .
 
-MethodInvocation<out Expression e>
+
+
+/*
+ArrayElements<. out ExprList parList .>
+																	(.	parList = new ExprList(); Expression parameter = null;	.)
+=	Expr<out parameter>							(.	parList.Add(parameter);	.)
+	{	comma Expr<out parameter>			(.	parList.Add(parameter);	.)
+	}
+	[comma]
+.
+*/
+
+
+/*
+ClrNewObject<out Type objType>
 =
-[ ( "global"
-| "system"
-) "."
+		clr 									(.	string str = ""; .)
+		"." ident							(.	str += t.val; .)
+		{ ANY									(.	str += t.val; .)
+		}											(.	objType = null;
+															if(!Interpreter.Framework.ObjectLibrary.TryFindType(str, out objType)) {
+																throw new ArgumentException("New(): CLR " + str + " not found");
+															}
+												.)
+.
+*/
+
+MethodInvocation<out Expression e>			(.	string methodName; bool IsGlobalSelfMethod = false;
+																						e = null; bool IsSystemMethod = false; bool IsNoKeywords = true; 
+																				.)
+=
+[	(	"global"														(.	IsGlobalSelfMethod = true; IsNoKeywords = false; .)
+	|	"system"														(.	IsSystemMethod = true; IsNoKeywords = false; .)
+	) "."
 ]
 Ident<out methodName>
-"("
-[
-ParamList<out parList>
-]
-")"
+	"("										(.	bool isWithinExprStmt = this.IsWithinExprStmt; IsGlobalSelfMethod = true; List<Expression> parList = new List<Expression>(); Type frameworkReturnType = null; .)
+		[										(.	this.IsWithinExprStmt = false; .)
+			ParamList<out parList>
+		]
+	")"										(.	this.IsWithinExprStmt = isWithinExprStmt; 
+														Expression[] parameters = parList.ToArray();	
+														MethodInfo mi = null;
+														MethodInfo frameworkMi = null;
+														bool hasUserMethod = false;
+														string resolvedUserName = methodName;
+
+														if(!IsSystemMethod && IsNoKeywords) {
+															hasUserMethod = this.TryResolveUserMethod(methodName, parameters.Length, out resolvedUserName, out _);
+														}
+
+														if(!hasUserMethod && (IsSystemMethod || IsNoKeywords)) {
+															if( FrameworkMethodInvoke.ContainMethod(methodName, parameters.Length, out frameworkReturnType, out frameworkMi) ) {	 
+																IsSystemMethod = true; 
+															}
+															else if(Interpreter.SystemMethodInvoke.IsSystemMethod(methodName, parameters.Length, out mi)) { IsSystemMethod = true; }
+														}
+														if	(hasUserMethod) {
+															e = new SelfMethodInvoke(resolvedUserName, parList, this, this.GetCurrentPosition());
+															//typeTarget = null; //disallow further access of properties or methods
+														}
+														else if	(IsSystemMethod) {
+															if(mi != null) {
+																e = new SystemMethodInvoke(mi, parameters);
+																// Use the actual SystemMethods return type; frameworkReturnType can be null here.
+																e.Type = mi.ReturnType;
+															}
+															else {
+																Constant<string> patternExpr = null;
+																if (parameters.Length > 1) patternExpr = parameters[1] as Constant<string>;
+																if (Interpreter.Framework.StringLibrary.RegexOptimizdField.Contains(methodName)
+																	&& patternExpr != null // Make sure pattern is a string, not a variable
+																	&& CompileGlobal.RegexOptimizedFieldPattern.Count(p => p.ToUpperInvariant() == patternExpr.Value.ToUpperInvariant()) == 0) {
+																	CompileGlobal.RegexOptimizedFieldPattern.Add(patternExpr.Value);
+																}
+																e = new FrameworkMethodInvoke(FrameworkMethodInvoke.FindMethod(methodName), parameters)
+																{
+																	BoundMethod = frameworkMi
+																};
+																if(e == null) throw new Exception(this.GetCurrentPosition() + "cannot find System method:" + methodName);
+																e.Type = frameworkReturnType;
+																//typeTarget = typeof(object);
+															}
+														}
+														//Call the designer-defined method
+														else {
+															e = new SelfMethodInvoke(methodName, parList, this, this.GetCurrentPosition());
+															//typeTarget = null; //disallow further access of properties or methods
+														}
+											.)
 .
 
-ParamList
 
-= Expr<out parameter>
-{ "," Expr<out parameter>
-}
+ParamList<. out List<Expression> parList .> 
+																						(.	parList = new List<Expression>	(); Expression parameter; .) 
+=	Expr<out parameter>												(.	parList.Add(parameter); .)	
+	{ "," Expr<out parameter>									(.	parList.Add(parameter); .)
+	} 
 .
 
 END Formula.
