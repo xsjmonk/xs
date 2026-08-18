@@ -166,8 +166,29 @@ s.ToLower();  // CLR method → invalid
 
 ### Reserved keywords
 
-* `url` is a **keyword** (folder of the current script)
-* Do **not** use `url` as a variable name
+* `url` is a **keyword** (the current script folder / crawler URL context)
+* Do **not** use `url` as an identifier in any position: variable name,
+  parameter name, global name, field/property name, anonymous-object property,
+  or dictionary/member alias
+* Use a safe identifier such as `uri`, `pageUrl`, or `targetUrl` instead
+* The built-in expression `url` remains valid where the language defines it,
+  and the text `url` is valid inside quoted strings and regular expressions
+
+Invalid:
+
+```xs
+var url = "";
+func load(url) { => url; }
+var item = new { url = "https://example.com" };
+```
+
+Valid:
+
+```xs
+string uri = url;
+func load(pageUrl) { => pageUrl; }
+var item = new { uri = "https://example.com" };
+```
 
 ---
 
@@ -260,6 +281,30 @@ For complex scripts or commands with heavy quoting, prefer free‑text `StringBu
 
   * `int`
   * `string`
+
+The operator is resolved in two stages:
+
+* At runtime, XS supports `ArrayList`/`IList`, arrays, dictionaries, CLR
+  indexers, strings, and enumerable fallback where an integer index is valid.
+* At compile time, the result type is inferred from the **static type** of the
+  collection. Non-generic collections such as `ArrayList` and many framework
+  collections infer an `object` result. Cast the element before accessing
+  typed members:
+
+```xs
+var match = (clr.System.Text.RegularExpressions.Match)(matches[i]);
+string value = match.Groups["matched"].Value;
+```
+
+Cast precedence matters: `(Type)items[i]` may be parsed as a cast of
+`items` followed by indexing the cast result. To cast the indexed element,
+parenthesize the complete indexing expression: `(Type)(items[i])`. A
+two-step cast is also valid and explicit:
+
+```xs
+var itemValue = matches[i];
+var match = (clr.System.Text.RegularExpressions.Match)itemValue;
+```
 
 Examples:
 
