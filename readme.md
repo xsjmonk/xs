@@ -1157,6 +1157,9 @@ Notes:
 * `ReplStr` → plain substring replace (non-regex, ordinal, case-sensitive)
 * `Replace` → regex replace
 * `IsEmpty(x)` → string: `IsNullOrWhiteSpace`; `ICollection`: `Count == 0`; `IEnumerable`: no elements; otherwise `IsNullOrWhiteSpace(x?.ToString())`
+* For empty-string checks, use the engine-native `IsEmpty()` method:
+  `if(s.IsEmpty())` and `if(!s.IsEmpty())`. Do not compare strings with
+  `s == ""` or `s != ""`; `IsEmpty()` also handles whitespace-only values.
 
 ### API
 
