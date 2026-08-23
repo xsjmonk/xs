@@ -103,6 +103,26 @@ if(true) {
 
 ---
 
+### Regex escapes in normal strings
+
+XS normal strings differ from C# strings when writing regular expressions. The
+parser handles recognized string escapes (`\n`, `\r`, `\t`, `\\`, `\"`, etc.)
+specially, but preserves unknown escapes as a backslash and the following
+character.
+
+Write regex escapes with one backslash:
+
+```xs
+string pattern = "\s+";
+string digits = "\d+";
+string dot = "\.";
+```
+
+Do not use C#-style doubled regex escapes such as `"\\s+"`; in XS this is an
+escaped literal backslash followed by `s`, not the regex whitespace class.
+Use `@"..."` only when backslashes should remain literal, or `<<< >>>` for
+larger regex templates.
+
 ## 2) Imports, CLR interop & naming
 
 ### Imports
@@ -712,6 +732,25 @@ Additional rule:
 
 ## 13) Practical style guidelines
 
+### Script architecture
+
+* Keep methods independent and focused on one responsibility. Do not tightly
+  couple methods together through hidden state or side effects.
+* Build complex tasks by chaining independent methods as a clear pipeline:
+
+```xs
+string html = DownloadPage(targetUrl);
+string content = ExtractContent(html);
+string result = FormatResult(content);
+=> result;
+```
+
+* Each pipeline stage should have a clear input and output, making it possible
+  to test, replace, or reuse that stage independently.
+* When a .NET object implements disposal, dispose it immediately after its
+  final use. XS has no `using` statement, so use an explicit `Dispose()` call,
+  normally in a `try`/`catch`-safe flow where cleanup is guaranteed.
+
 * **Anonymous objects are immutable.** To "set" a property, create a new object and reassign:
 
 ```xs
@@ -728,12 +767,27 @@ cfg = new { gcloud_application_auth_time: now.ToString(), last_claude_working_fo
 * Combine same‑type declarations:
 
 ```xs
-int i=0, n=0;
+string s1 = "a string", s2 = "another";
+int i = 0, n = 0;
 ```
 
+* Do not use `var x = null;`. The compiler cannot infer a concrete runtime type
+  from `null`; initialize `var` with a non-null value that establishes its
+  shape, or use an explicit type.
 * Convert `func` parameters to concrete locals early
 * Keep main program short; move logic into `func` / `void`
 * Avoid exceptions (`throw` not supported)
+* Put the opening `{` on the same line as the declaration or control statement.
+* Keep short conditional statements compact when readability is preserved:
+
+```xs
+if(a == 1) { return 1; }
+else { return 0; }
+```
+
+* Prefer compact code that remains immediately readable. Use multiple lines
+  when a one-line statement would hide control flow, important conditions, or
+  side effects.
 
 ---
 
