@@ -1,0 +1,18 @@
+---
+alwaysApply: true
+globs:
+  - "**/*.xs"
+description: >
+  Mandatory XS language guidance. Automatically apply the canonical local
+  xs-language skill before any XS-related work; do not infer syntax from C#,
+  JavaScript, PowerShell, or another language.
+---
+
+# XS Language
+
+For any XS-related task, apply the single canonical skill at
+`xs-language/SKILL.md` before reading, explaining, writing, reviewing, or
+debugging code. Do not ask the user to run a skill command.
+
+Use only this repository's local sources listed by the skill. Do not rely on
+another repository or create a second copy of the skill.

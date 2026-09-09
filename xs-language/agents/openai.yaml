@@ -1,0 +1,7 @@
+interface:
+  display_name: "XS Language"
+  short_description: "Learn and program the custom XS language"
+  default_prompt: "Use $xs-language to work with XS code using this repository's local grammar, documentation, and scripts."
+
+policy:
+  allow_implicit_invocation: true
