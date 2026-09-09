@@ -48,7 +48,10 @@ Search the local scripts for a working example before inventing syntax.
 - Use `elseif`, never `else if`; there is no `foreach`, `switch`, `using`,
   `throw`, nullable type, or `out/ref/in/params` syntax.
 - `catch` has no exception variable, cannot be empty, and cannot contain
-  `goto`. Prefer a success flag and decide after the `try/catch`.
+  branching operators such as `goto`, `return`, `=>`, `continue`, or `break`.
+  Use `catch` only for exception-handling statements such as logging or
+  assignment to target variables; prefer a success flag and decide after the
+  `try/catch`.
 - Statements are separated by semicolons; newlines do not provide separation.
 - Opening braces stay on the same line as the declaration or control statement.
 
@@ -65,6 +68,14 @@ Search the local scripts for a working example before inventing syntax.
   disambiguated form for a one-element array.
 - Array literals are `[...]` and are ArrayList-like; C# arrays are not XS data.
 - Index expressions are limited to integer or string forms.
+- Prefer `[]` for `ArrayList`, arrays, and other targets where XS indexing
+  works with the needed index type. For `JObject` / `JToken` string property
+  access, use `get_Item("name")`; `root["WebHostPath"]` can fail because the
+  runtime may treat the index as `int` only.
+- Cast precedence differs from C#. `(clr.JToken)root.get_Item("key")` and
+  `(clr.JToken)root["key"]` both bind the cast to `root`, not the lookup
+  result. Parenthesize the full lookup:
+  `(clr.JToken)(root.get_Item("key"))`.
 - Anonymous objects are immutable; create and assign a new object to change
   their shape.
 
@@ -73,7 +84,10 @@ Search the local scripts for a working example before inventing syntax.
 - Declare variables at first use.
 - Prefer explicit `string`, `int`, `long`, `double`, and `bool` types when
   known; use `var` for complex CLR values.
-- Never initialize `var` from `null`; use a concrete template or value.
+- `var` must be initialized with a concrete type the compiler can infer, such
+  as `new clr.SomeType()`, a cast like `(clr.JObject)x`, or another concrete
+  value. Never write `var a = null`; the compiler cannot infer the variable
+  type. Do not later assign a different type to the same `var` variable.
 - Redeclaration behaves like assignment and does not reinitialize a variable.
 - Do not declare variables inside `do` or `catch` blocks.
 - Numeric promotion is `double > long > int`.
@@ -187,9 +201,13 @@ compiler or claim that static inspection proves runtime correctness.
 - `elseif` is required.
 - Main flow cannot early-return.
 - `catch {}` is invalid.
-- `goto` is not valid inside `catch`.
-- `var x = null` is invalid.
+- `catch` cannot contain `goto`, `return`, `=>`, `continue`, or `break`.
+- `var x = null` is invalid; initialize `var` with `new clr...`, a cast, or
+  another concrete value, and do not reassign a different type later.
 - `[ident]` is dictionary access, not a one-element list.
+- `(Type)obj.get_Item("key")` is not `(Type)(obj.get_Item("key"))`;
+  parenthesize the full lookup before casting.
+- `JObject` string keys: use `get_Item`, not `[]`.
 - `url`, `now`, and `config` are reserved.
 - C# syntax, CLR assumptions, and unverified extension APIs are not evidence.
 
