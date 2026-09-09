@@ -14,6 +14,15 @@ explaining, writing, reviewing, or debugging XS code. Use the local repository
 sources below as the authoritative knowledge base; do not require another
 repository or a second skill.
 
+## Skill ownership and availability
+
+This file is the single canonical XS skill for this repository. Add every new
+XS rule or piece of guidance here so it remains available to all agents.
+Do not copy this skill into agent-specific folders, other project folders, or
+duplicate skill files. Agents working in different contexts must reference
+this skill and its local sources instead of creating a second copy that can
+drift or require the knowledge to be learned again.
+
 ## Local authoritative sources
 
 | Source | Use |
