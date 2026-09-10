@@ -228,7 +228,9 @@ func get_mp4_files_with_path(input_folder) {
 	for (int i = 0; i < files.Count; i++) {
 		ext = clr.System.IO.Path.GetExtension(files.get_item(i).ToString()).ToLower();
 		if (ext == ".mov" || ext == ".wmv" || ext == ".avi" || ext == ".mp4" || ext == ".mkv" 
-			|| ext == ".rmvb" || ext == ".flv" || ext == ".mpeg") {
+			|| ext == ".rmvb" || ext == ".flv" || ext == ".mpeg"
+			|| ext == ".ts" 
+		) {
 			arr.Add(files..get_item(i));
 		}
 	}
@@ -302,7 +304,7 @@ func convert_to_mp4_faststart(input) {
 
 	=> get_ffmpeg() & " -i "
 	& "\"" & input & "\""
-	& " -c:v libx264 -vf \"format=yuv420p" & fps_cap_clause(input, 15) & "\" -c:a mp3 -movflags +faststart "
+	& " -c:v libx264 -vf \"format=yuv420p" & fps_cap_clause(input, 24) & "\" -c:a mp3 -movflags +faststart "
 	& "\"" & folder & "\\" & process_folder() & "\\" & output & "\"" ;
 }
 
@@ -321,7 +323,7 @@ func convert_to_mp4(input) {
 	& "\"" & input & "\""
 	& " -vf \"" & (@videoSize == "1920" ? build_scale(1920, 1080) : build_scale(1280, 720) ) 
 				& "," & (@videoSize == "1920" ? build_pad(1920, 1080) : build_pad(1280, 720) ) 
-				& fps_cap_clause(input, 15) & "\""
+				& fps_cap_clause(input, 24) & "\""
 	& " " & venc 
 	& " " & stream // only non-empty when [p2] specified
 	& " -movflags +faststart "
@@ -493,6 +495,7 @@ func scoreStream(lang, title, handler) {
 	if (lLower == "cmn") { score = score + 140; }
 	elseif (lLower == "chi" || lLower == "zho") { score = score + 120; }
 	elseif (lLower.IndexOf("zh") == 0) { score = score + 110; }
+	elseif (T.Contains("国语") || T.Contains("國語") || T.Contains("國語") ) { score = score + 120; }
 
 	for (j=0; j<languageCodes.Count; j++) {
 		if (lLower == lc(languageCodes.get_item(j)).ToString()) { score = score + 30; }
@@ -634,15 +637,15 @@ func build_processing_folder(folder) {
 }
 
 func get_ffmpeg() {
-	string result = "D:\\Green\\ffmpeg\\ffmpeg.exe";
-	result = "ffmpeg"; goto exit;
+	string chocolatey = "C:\\ProgramData\\chocolatey\\lib\\ffmpeg\\tools\\ffmpeg\\bin\\ffmpeg.exe";
+	string greenC = "C:\\Green\\ffmpeg\\ffmpeg.exe";
+	string greenD = "D:\\Green\\ffmpeg\\ffmpeg.exe";
 
-	if(clr.File.Exists(result)) {
-		goto exit;
-	}
-	result = "ffmpeg.exe";
-	exit: 
-	=> result;
+	if(clr.File.Exists(chocolatey)) { => chocolatey; }
+	if(clr.File.Exists(greenC)) { => greenC; }
+	if(clr.File.Exists(greenD)) { => greenD; }
+
+	=> greenD;
 }
 
 func get_ffprobe() { => "ffprobe.exe"; }
