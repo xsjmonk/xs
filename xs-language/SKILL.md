@@ -77,6 +77,9 @@ below. Search the local scripts for a working example before inventing syntax.
 - Cast precedence differs from C#. `(Type)items[i]` and
   `(clr.JToken)root["key"]` bind the cast to the collection/root, not the
   indexed element. Parenthesize the full lookup: `(Type)(items[i])`.
+- **Cast also binds before `..`:** `(bool)response..IsSuccessStatusCode` is
+  parsed as `((bool)response)..IsSuccessStatusCode` and throws at runtime.
+  Write `(bool)(response..IsSuccessStatusCode)` or compare without casting.
 - After a cast, use `..name` to force CLR member resolution:
   `(clr.SqlConnection)con..Open()`.
 - Dynamic member access: `expr -> "propName"` or `expr -> propVar` (GetProp).
@@ -242,6 +245,9 @@ compiler or claim that static inspection proves runtime correctness.
 
 ## Common pitfalls
 
+- **`(Type)obj..Member` needs inner parentheses:** `(bool)response..IsSuccessStatusCode`
+  casts the object, not the property. Use `(bool)(response..IsSuccessStatusCode)`.
+  A `try/catch` around this can hide the bug and make translation/API checks look disabled.
 - `&` is concatenation; `+` is numeric addition.
 - `Replace` is regex; `ReplStr` is plain text.
 - `elseif` is required.
@@ -253,6 +259,7 @@ compiler or claim that static inspection proves runtime correctness.
 - `[ident]` is dictionary access, not a one-element list.
 - `(Type)obj[i]` is not `(Type)(obj[i])`; parenthesize the full lookup
   before casting.
+- `(Type)obj..Member` is not `(Type)(obj..Member)`; parenthesize before `..`.
 - Variables are not block-scoped; redeclaration does not reinitialize.
 - No C# arrays — use `ArrayList` and `[expr]`.
 - `..` vs `.` after a cast: use `..` to reach CLR members on cast values.

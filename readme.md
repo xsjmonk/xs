@@ -326,6 +326,20 @@ var itemValue = matches[i];
 var match = (clr.System.Text.RegularExpressions.Match)itemValue;
 ```
 
+**Cast also binds before `..` member access** (not C# precedence):
+
+```xs
+// WRONG — ((bool)response)..IsSuccessStatusCode throws InvalidCastException
+if((bool)response..IsSuccessStatusCode) { ... }
+
+// CORRECT
+if((bool)(response..IsSuccessStatusCode)) { ... }
+if(response..StatusCode == 200) { ... }
+```
+
+Inside `try/catch`, the wrong form fails silently and can look like a feature
+flag or API problem (production case: `1688_glasses.xs` `TranslateText`).
+
 Examples:
 
 ```xs
@@ -652,6 +666,8 @@ done:
 ### Special operators
 
 * `..` — force CLR property/method resolution when type is unknown
+  * **Cast binds before `..`:** write `(bool)(response..IsSuccessStatusCode)`,
+    not `(bool)response..IsSuccessStatusCode`
 * `->` — computed property access (anonymous/dynamic property access)
   * Left side is an **object**
   * Right side is an **expression** (commonly a computed string property name)

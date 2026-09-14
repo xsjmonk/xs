@@ -16,3 +16,7 @@ debugging code. Do not ask the user to run a skill command.
 
 Use only this repository's local sources listed by the skill. Do not rely on
 another repository or create a second copy of the skill.
+
+**Hard rule — cast + `..`:** never write `(Type)obj..Member`; always
+`(Type)(obj..Member)` or avoid the cast. See skill section
+"CRITICAL — cast binds tighter than `..`".
