@@ -202,14 +202,42 @@ requires Windows line endings.
 ## Site mode
 
 Site mode is distinct from Interpreter mode. Identify the mode before editing.
-Read the Site-related sections in `readme.md` first.
+Read the Site-related sections in `readme.md` and the full Site reference in
+`xs-language/SKILL.md` (same repo) before editing crawler scripts.
 
 ```xs
 Site Example {
-    config Addr = "https://example.test/" & url;
-    name = { => MatchGroup(this, "<title>(.*?)</title>", "g"); };
+  config Addr = {
+    @cfg = new {
+      EnableTranslation: true,
+      PicUrlDownloadFolder: "r:\\1688",
+      ProductDescImagesFolder: "d:\\Models\\Images\\"
+    };
+    => "";
+  }
+  name = { => MatchGroup(this, "<title>(.*?)</title>", "g"); };
 }
 ```
+
+### `@` globals in Site mode
+
+- **`@name = ...` may be assigned only** in Parser-mode top-level statements,
+  or inside a **Site output column** or **`config` block** — not as a
+  top-level global outside `Site { }` in a Site file.
+- A Site-scoped `@` global is visible **only** in Site **output columns** and
+  **`config` blocks** in the same `Site { }`.
+- **`func` and `void` cannot see Site-scoped `@` globals** (same file or
+  not). Pass config values as **function parameters** from the Site column.
+- In **Parser mode**, `@` globals *are* shared across `func`/`void` in the
+  same file.
+
+### Config encapsulation
+
+When settings are numerous (paths, flags, API URLs, tool executables), assign
+one **`@cfg = new { Field: value, ... }`** in `config Addr` or `config init`.
+Read `@cfg.<Field>` only in Site columns; pass each needed field into helpers.
+Do not reference `@cfg` inside `func`/`void`. See
+`Examples/Crawler/1688_glasses.xs`.
 
 Site output fields become CSV columns. A null output field can drop the entire
 row, so return an intentional default such as `""` or `-1` unless dropping
@@ -280,6 +308,8 @@ compiler or claim that static inspection proves runtime correctness.
 - `await` only on direct CLR method calls returning Task/ValueTask.
 - Site mode: a `null` output field drops the whole row.
 - Site mode: `url` in `config` is the Excel ID, not the downloaded URL.
+- Site mode: `@` globals — Site columns/`config` only; invisible in `func`/`void`; pass parameters.
+- Site mode: many configs — one `@cfg = new { ... }` object; pass fields to helpers.
 - `url`, `now`, and `config` are reserved.
 - C# syntax, CLR assumptions, and unverified extension APIs are not evidence.
 

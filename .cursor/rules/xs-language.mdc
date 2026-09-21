@@ -20,3 +20,7 @@ another repository or create a second copy of the skill.
 **Hard rule — cast + `..`:** never write `(Type)obj..Member`; always
 `(Type)(obj..Member)` or avoid the cast. See skill section
 "CRITICAL — cast binds tighter than `..`".
+
+**Hard rule — Site `@` globals:** assign only in Site output/`config` blocks;
+never read them inside `func`/`void` — pass values as parameters. Many settings
+→ one `@cfg = new { ... }` object. See skill section "`@` globals in Site mode".
