@@ -62,7 +62,19 @@ below. Search the local scripts for a working example before inventing syntax.
 ## Keywords and expressions
 
 - `url`, `now`, and `config` are reserved keywords. Never use `url` as an
-  identifier; use `uri`, `pageUrl`, or `targetUrl`.
+  identifier (variable, parameter, property, or alias); use `uri`, `pageUrl`,
+  `picUrl`, or `targetUrl`. The built-in crawler expression `url` and quoted
+  string/regex text are fine.
+
+```xs
+// WRONG
+string url = GetFirstGalleryImage(param);
+func IsValidImageUrl(url) { ... }
+
+// CORRECT
+string picUrl = GetFirstGalleryImage(param);
+func IsValidImageUrl(imageUrl) { ... }
+```
 - String concatenation is `&`, not `+`.
 - `Replace` is regex replacement; use `ReplStr` for plain text replacement.
 - Use `IsEmpty()`/`IsNullOrWhiteSpace()` rather than string comparisons when
