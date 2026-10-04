@@ -41,9 +41,18 @@ below. Search the local scripts for a working example before inventing syntax.
 - XS has CLR/.NET interop, but its syntax is not C#.
 - A program may contain imports, `func`/`void` definitions, top-level flow,
   and a final `return`/`=>`/`ret`.
-- The top-level main section has no early `return`; use a label and `goto`,
-  then one final result.
-- `func` paths must return a value; `void` methods may use bare `return`.
+- **`func` and `void` are not the Parser main part.** Helper bodies support
+  early exit and **multiple** exits: `return;` in **`void`**, `=> expr;` /
+  `return expr;` in **`func`**, including under `if`, `for`, and `while`.
+  **Do not use `goto exit` (or similar) in `func`/`void` when `return`/`=>`
+  is enough** — reserve `goto` in helpers only for rare loop exits.
+- **No early `return`/`=>` in main execution regions** (not inside `func`/`void`):
+  **Parser mode top-level main** (the statement flow that ends in one final
+  `=>`/`return`) and **Site mode output column blocks** and **`config` blocks**.
+  Use straight-line logic plus one final result, or **`goto label;`** then a
+  single final `=>`/`return expr` in that region.
+- `func` paths must return a value on every path; `void` methods may use bare
+  `return;` to stop early.
 - Use `elseif`, never `else if`; there is no `foreach`, `switch`, `using`,
   `throw`, nullable type, or `out/ref/in/params` syntax.
 - `catch` has no exception variable, cannot be empty, and cannot contain
@@ -58,6 +67,17 @@ below. Search the local scripts for a working example before inventing syntax.
 - `await` is supported only on a direct CLR method call that returns
   `Task`/`Task<T>`/`ValueTask`/`ValueTask<T>`; not on variables,
   parenthesized operands, user `func`s, or general expressions.
+
+### Return rules (agents — avoid wrong `goto`)
+
+| Where | Early `return` / `=>`? | Use instead |
+| --- | --- | --- |
+| **Parser top-level main** | No | `goto label;` → one final `=>` |
+| **Site output columns** and **`config` blocks** | No | `goto` → one final `=> expr` in that block |
+| **`func` / `void` bodies** | Yes | `return;`, `=> expr;`, `return expr;`; multiple exits OK |
+
+**Do not** copy Parser-main `goto exit` into **`func`/`void`** when **`return`/`=>`**
+is enough.
 
 ## Keywords and expressions
 
@@ -162,7 +182,9 @@ explicit inputs/outputs. Avoid hidden state except deliberate `@` globals.
 
 Typical layout: imports → `@` globals → `[p1]`/`Ask` argument reading → main
 logic → final `=>`/`return` → helper `func`/`void` definitions below main.
-Use `goto label;` for early exit, retries (`Retry:`), and waits in main flow.
+Use `goto label;` for early exit, retries (`Retry:`), and waits in **Parser
+main** and **Site column/config** blocks only — not inside `func`/`void` when
+`return`/`=>` suffices.
 
 Use the canonical patterns already present in `Scripts/*.xs` for:
 
@@ -241,7 +263,10 @@ Do not reference `@cfg` inside `func`/`void`. See
 
 Site output fields become CSV columns. A null output field can drop the entire
 row, so return an intentional default such as `""` or `-1` unless dropping
-the row is required. `config` blocks may be reevaluated by the host. In
+the row is required. **Site output columns and `config` blocks follow the same
+no-early-return rule as Parser main** — one final `=> expr` per block, or
+`goto` then a single final `=>`; put branching helpers in `func`/`void` and
+call them from the column. `config` blocks may be reevaluated by the host. In
 ParseItem `config` blocks, `url` is the Excel input ID; output blocks see the
 downloaded URL. Output blocks can read or write sibling fields via
 `[FieldName]` / `[FieldName] = value`. ParseIDs list mode adds `SiteIDs`
@@ -291,7 +316,9 @@ compiler or claim that static inspection proves runtime correctness.
 - `&` is concatenation; `+` is numeric addition.
 - `Replace` is regex; `ReplStr` is plain text.
 - `elseif` is required.
-- Main flow cannot early-return.
+- **Parser main** and **Site output/config blocks** cannot early-return — use
+  `goto` + one final `=>`. **`func`/`void` can** use `return`/`=>` freely;
+  avoid unnecessary **`goto exit`** in helpers.
 - `catch {}` is invalid.
 - `catch` cannot contain `goto`, `return`, `=>`, `continue`, or `break`.
 - `var x = null` is invalid; initialize `var` with `new clr...`, a cast, or
