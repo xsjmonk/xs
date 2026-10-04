@@ -249,9 +249,17 @@ Site Example {
 
 ### `@` globals in Site mode
 
-- **`@name = ...` may be assigned only** in Parser-mode top-level statements,
-  or inside a **Site output column** or **`config` block** — not as a
-  top-level global outside `Site { }` in a Site file.
+**File layout (Site / crawler scripts)**
+
+- Between **`import`** and **`Site { }`**: only imports and helper `func`/`void`
+  definitions — **no** top-level `var`, **no** `@name = ...`.
+- **`var`** is allowed only inside **`func`**, **`void`**, Site **output column**
+  blocks, and **`config ... = { }`** blocks.
+- **`@name = ...`** is allowed only inside Site **output columns** or
+  **`config init`**, **`config Addr`**, or other **`config`** blocks — prefer
+  **`config init`** for `@cfg` plus any per-run caches or counters.
+
+**Assignment and visibility**
 - A Site-scoped `@` global is visible **only** in Site **output columns** and
   **`config` blocks** in the same `Site { }`.
 - **`func` and `void` cannot see Site-scoped `@` globals** (same file or
@@ -263,9 +271,9 @@ Site Example {
 
 When settings are numerous (paths, flags, API URLs, tool executables), assign
 one **`@cfg = new { Field: value, ... }`** in `config Addr` or `config init`.
-Read `@cfg.<Field>` only in Site columns; pass each needed field into helpers.
-Do not reference `@cfg` inside `func`/`void`. See
-`Examples/Crawler/1688_glasses.xs`.
+Optional per-run **`@` caches** (e.g. memoized JSON) belong in the same
+`config init` block — not at file top. Read `@cfg.<Field>` only in Site columns;
+pass each needed field into helpers. Do not reference `@cfg` inside `func`/`void`.
 
 Site output fields become CSV columns. A null output field can drop the entire
 row, so return an intentional default such as `""` or `-1` unless dropping
@@ -347,6 +355,7 @@ compiler or claim that static inspection proves runtime correctness.
 - Site mode: a `null` output field drops the whole row.
 - Site mode: `url` in `config` is the Excel ID, not the downloaded URL.
 - Site mode: `@` globals — Site columns/`config` only; invisible in `func`/`void`; pass parameters.
+- Site mode: no file-level `var`/`@` before `Site { }`; put `@cfg` and caches in `config init` / `config Addr`.
 - Site mode: many configs — one `@cfg = new { ... }` object; pass fields to helpers.
 - `url`, `now`, and `config` are reserved (never use `url` as an identifier;
   **`invalid VarDesc`** if you do).
