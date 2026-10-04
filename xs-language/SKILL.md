@@ -84,10 +84,11 @@ is enough.
 - `url`, `now`, and `config` are reserved keywords. Never use `url` as an
   identifier (variable, parameter, property, or alias); use `uri`, `pageUrl`,
   `picUrl`, or `targetUrl`. The built-in crawler expression `url` and quoted
-  string/regex text are fine.
+  string/regex text are fine. Declaring `string url = ...` typically fails with
+  **`invalid VarDesc`**.
 
 ```xs
-// WRONG
+// WRONG — keyword as identifier (invalid VarDesc)
 string url = GetFirstGalleryImage(param);
 func IsValidImageUrl(url) { ... }
 
@@ -106,6 +107,11 @@ func IsValidImageUrl(imageUrl) { ... }
 - Array literals are `[...]` and are ArrayList-like; C# arrays are not XS data.
 - Index expressions are limited to integer or string forms.
 - Prefer `expr[i]` over `expr.get_item(i)` when indexing is supported.
+- **`func` parameters are untyped** — do not call CLR `.Add` / `.Append` on
+  parameter lists (`Func name Add not found`; `_ param.Add(x)` does not help).
+  Use a **local** `var list = new clr.System.Collections.ArrayList();`,
+  `_ list.Add(...)`, **`=> list`**, and reassign in the caller. Do not assume
+  pass-by-reference when passing ArrayList into helpers.
 - Cast precedence differs from C#. `(Type)items[i]` and
   `(clr.JToken)root["key"]` bind the cast to the collection/root, not the
   indexed element. Parenthesize the full lookup: `(Type)(items[i])`.
@@ -310,6 +316,11 @@ compiler or claim that static inspection proves runtime correctness.
 
 ## Common pitfalls
 
+- **`url` keyword:** never `string url = ...` or `func F(url)` — use `imageUrl`,
+  `pageUrl`, `picUrl`, `uri`, etc. Compile error **`invalid VarDesc`** is common.
+- **Untyped `func` parameters:** no CLR `.Add` on arguments; build a local
+  `ArrayList`, return it, merge with reassignment — do not mutate a list
+  passed into a `void` helper (reference semantics are not reliable).
 - **`(Type)obj..Member` needs inner parentheses:** `(bool)response..IsSuccessStatusCode`
   casts the object, not the property. Use `(bool)(response..IsSuccessStatusCode)`.
   A `try/catch` around this can hide the bug and make translation/API checks look disabled.
@@ -337,7 +348,8 @@ compiler or claim that static inspection proves runtime correctness.
 - Site mode: `url` in `config` is the Excel ID, not the downloaded URL.
 - Site mode: `@` globals — Site columns/`config` only; invisible in `func`/`void`; pass parameters.
 - Site mode: many configs — one `@cfg = new { ... }` object; pass fields to helpers.
-- `url`, `now`, and `config` are reserved.
+- `url`, `now`, and `config` are reserved (never use `url` as an identifier;
+  **`invalid VarDesc`** if you do).
 - C# syntax, CLR assumptions, and unverified extension APIs are not evidence.
 
 ## Priority of evidence
