@@ -18,10 +18,11 @@ repository or a second skill.
 
 This file is the single canonical XS skill for this repository. Add every new
 XS rule or piece of guidance here so it remains available to all agents.
-Do not copy this skill into agent-specific folders, other project folders, or
-duplicate skill files. Agents working in different contexts must reference
-this skill and its local sources instead of creating a second copy that can
-drift or require the knowledge to be learned again.
+Do not copy this skill into agent-specific folders or other project folders.
+
+**Monorepo mirror:** keep **Long text `<<< >>>`** and **RunPowershellFromMemory contract**
+in sync with `../xs-language/SKILL.md` (xs-agent repo root). Extended API tables
+live in the root skill; both files must carry the same required contract text.
 
 ## Local authoritative sources
 
@@ -123,10 +124,45 @@ func IsValidImageUrl(imageUrl) { ... }
   `(clr.SqlConnection)con..Open()`.
 - Dynamic member access: `expr -> "propName"` or `expr -> propVar` (GetProp).
 - String literals: `"..."` with escapes, `@"..."` verbatim (`""` = one quote),
-  `<<< ... >>>` multiline free-text; single quotes are valid inside literals.
+  `<<< ... >>>` multiline free-text (see **Long text** below).
 - Regex escapes in normal strings use one backslash (`"\s+"`, `"\d+"`), not
   C# doubled escapes (`"\\s+"`). Use `@"..."` or `<<< >>>` when backslashes
   must stay literal.
+
+### Long text: `<<< >>>` and placeholder markers (required)
+
+Use the XS-native **`<<< ... >>>`** operator for **long or multiline** text
+(PowerShell bodies, SQL batches, curl templates, bat fragments, big regex).
+Assign to **`StringBuilder`** (built-in type; no `new` required):
+
+```xs
+StringBuilder ps = <<<
+Add-Type -AssemblyName System.Drawing;
+$imgPath = '__IMG_PATH__';
+$maxW = __MAX_W__;
+>>> ;
+_ ps.ReplStr("__IMG_PATH__", SafeForPs(path));
+_ ps.ReplStr("__MAX_W__", maxWidth.ToString());
+```
+
+**When there are not many dynamic values**, keep the heredoc **static** and use
+**marker tokens** in the text (`USER`, `SERVER`, `__PATH__`, `ip_to_be_replaced`),
+then **`ReplStr` / `Replace` in place** on the `StringBuilder` — do not embed
+many `&` interpolations inside the template.
+
+**Rules**
+
+- Prefer **`StringBuilder s = <<< ... >>>;`** over long `"line1" & "\r\n" & "line2"` chains.
+- Replace placeholders on the builder: `_ s.ReplStr("MARKER", value);` — avoid
+  `s.ToString().ReplStr(...).ReplStr(...)` intermediate strings (readme §16.7).
+- Markers should be **unique** in the template (e.g. `__UPLOAD_URL__`, not `x`).
+- For regex/Windows paths inside the block, `<<< >>>` avoids doubling backslashes;
+  use `@"..."` only for short single-line literals.
+- Generated PowerShell/batch for Windows tools: normalize to **`\r\n`** where needed.
+
+**Anti-pattern:** one giant string with `\"` and `\n` escapes — hard to read and
+easy to break; use `<<< >>>` + markers instead.
+
 - Anonymous objects are immutable; create and assign a new object to change
   their shape.
 
@@ -219,7 +255,8 @@ string choice = options[selection];
 — `defaultKey` must match one choice string (usually a dictionary **key**). Or
 reorder keys manually (`BuildPromptChoices` in `MediaConvert.xs`).
 
-Full rules and API notes: **`xs-language/SKILL.md`** (parent `xs-agent` repo).
+Full Prompt API and extended tables: **`../xs-language/SKILL.md`** (xs-agent repo root).
+Required **Long text** and **RunPowershellFromMemory** sections are duplicated in both skills.
 
 Use the canonical patterns already present in `Scripts/*.xs` for:
 
@@ -232,11 +269,47 @@ Use the canonical patterns already present in `Scripts/*.xs` for:
 - **`clr.Console.Prompt` droplist** (`Scripts/MediaConvert.xs`: dictionary keys → menu, values → logic);
 - user configuration persistence.
 
-For `<<< >>>` templates, replace placeholders in place
-(`_ tpl.Replace("key", val)`), not via chained intermediate strings from
-`.ToString()`. For PowerShell, `clr.Ex.Powershell.Run` streams live output;
-capture stdout with an EncodedCommand helper when output must be parsed (see
-`Scripts/*.xs`). Initialize JSON config from a full-shape template via
+### RunPowershellFromMemory contract (required)
+
+User-defined helper that runs an **embedded PowerShell script** via `-EncodedCommand`.
+Treat it as a **machine interface**, not a console command.
+
+**Helper — do not add noise**
+
+- **Never** `mark`, `Write-Host`, or print stderr/stdout from inside the helper.
+- Wrap every script with `$ProgressPreference = 'SilentlyContinue'` and
+  `$WarningPreference = 'SilentlyContinue'` (avoids CLIXML progress on stderr).
+- Redirect stdout/stderr; **return normalized stdout only** (`=> stdoutx`).
+- Strip accidental CLIXML / progress blobs from stdout (`NormalizePowershellStdout`).
+- Do **not** use `shouldShowError` to dump stderr to the UI — callers parse stdout.
+
+**Embedded PowerShell — simple, parseable stdout**
+
+- Success: `Write-Output 'token'` or `Write-Output 'prefix|details'`
+  (e.g. `resized|600x400 q85`, `skipped`, `ok|...`).
+- Failure: **catch**, then `Write-Output ('error|' + $_.Exception.Message)` —
+  tolerant; message must say **what failed**.
+- **No** `Write-Host`, `Write-Progress`, or verbose streams for normal flow.
+
+**XS caller**
+
+- Parse returned string; **`mark()` at the call site** with context
+  (e.g. `"PicUrl resize: " & detail`), not raw PowerShell output.
+
+**Live vs captured**
+
+- `clr.Ex.Powershell.Run` → interactive / live side effects.
+- `RunPowershellFromMemory(command)` → captured pipeline only.
+
+Canonical implementation: **`Scripts/frequent_user_defined_methods.xs`**
+(`NormalizePowershellStdout` + `RunPowershellFromMemory`).
+
+For `<<< >>>` templates, **keep the heredoc static**; use **placeholder markers**
+and `_ tpl.ReplStr("MARKER", val)` (or `.Replace`) in place — not many `&`
+interpolations inside the block. Do not build long text from chained
+`.ToString().ReplStr(...)` off the literal.
+
+Initialize JSON config from a full-shape template via
 `Deserialize(json, templateObj)`, never `var cfg = null`.
 
 Never hard-code credentials, tokens, private keys, or other secrets. Sanitize
@@ -383,6 +456,11 @@ compiler or claim that static inspection proves runtime correctness.
 - `..` vs `.` after a cast: use `..` to reach CLR members on cast values.
 - Three-tier call style: Tier-1 bare name, Tier-2/3 via `clr.<ns>...`.
 - Regex escapes: `"\s+"` not `"\\s+"` in normal strings.
+- **Long text:** use **`StringBuilder <<< >>>`** + marker **`ReplStr`/`Replace`**;
+  avoid long escaped `"..."` chains (see **Long text** section above).
+- **Captured PowerShell:** `RunPowershellFromMemory(command)` — no console noise;
+  stdout tokens `ok|…` / `error|…`; caller **`mark()`** with context (see
+  **RunPowershellFromMemory contract** above). Do not use `shouldShowError` stderr dumps.
 - `await` only on direct CLR method calls returning Task/ValueTask.
 - Site mode: a `null` output field drops the whole row.
 - Site mode: `url` in `config` is the Excel ID, not the downloaded URL.

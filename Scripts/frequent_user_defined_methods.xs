@@ -1,6 +1,18 @@
 => null;
 
-func RunPowershellFromMemory(command, shouldShowError) {
+func NormalizePowershellStdout(outputText) {
+	string s = outputText == null ? "" : outputText.ToString().Trim();
+	if(s.IsEmpty()) { => ""; }
+	if(s.StartsWith("#< CLIXML")) {
+		int lastNl = s.LastIndexOf("\n");
+		if(lastNl >= 0) {
+			s = s.Substring(lastNl + 1).Trim();
+		}
+	}
+	=> s;
+}
+
+func RunPowershellFromMemory(command) {
 	var p = new clr.System.Diagnostics.Process();
 	p.StartInfo.WindowStyle = clr.System.Diagnostics.ProcessWindowStyle.Minimized;
 	p.StartInfo.CreateNoWindow = true;
@@ -8,18 +20,22 @@ func RunPowershellFromMemory(command, shouldShowError) {
 	p.StartInfo.RedirectStandardOutput = true;
 	p.StartInfo.RedirectStandardError = true;
 	p.StartInfo.FileName = "powershell.exe";
-	p.StartInfo.Arguments = "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand " &
-				clr.System.Convert.ToBase64String(clr.System.Text.Encoding.Unicode.GetBytes("& {" & command.ToString() & "}")) ;
+	p.StartInfo.Arguments = "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand "
+		& clr.System.Convert.ToBase64String(
+			clr.System.Text.Encoding.Unicode.GetBytes(
+				"& { $ProgressPreference = 'SilentlyContinue'; $WarningPreference = 'SilentlyContinue'; "
+					& command.ToString()
+					& " }"
+			)
+		) ;
 
 	p.Start();
-	string stdoutx = p.StandardOutput.ReadToEnd();
-	string stderrx = p.StandardError.ReadToEnd();
+	string stdoutx = NormalizePowershellStdout(p.StandardOutput.ReadToEnd());
+	_ p.StandardError.ReadToEnd();
 	p.WaitForExit();
-
-	if((bool)shouldShowError && !stderrx.IsEmpty()) { mark("F65B3B", stderrx); }
 	p.Dispose();
 
-	return stdoutx;
+	=> stdoutx;
 }
 
 
@@ -45,19 +61,22 @@ void print_json(obj) {
 	}
 
 	safe = json.Replace("[", "[[").Replace("]", "]]");
+
 	safe = clr.System.Text.RegularExpressions.Regex.Replace(safe, "(?<=\\s*)\"([^\"]+)\"(?=\\s*:)", "[cyan]\"$1\"[/]");
 	safe = clr.System.Text.RegularExpressions.Regex.Replace(safe, ":\\s*\"([^\"]*)\"", ": [green]\"$1\"[/]");
 	safe = clr.System.Text.RegularExpressions.Regex.Replace(safe, ":\\s*(-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)", ": [yellow]$1[/]");
 	safe = clr.System.Text.RegularExpressions.Regex.Replace(safe, "(?i):\\s*(true|false)", ": [blue]$1[/]");
 	safe = clr.System.Text.RegularExpressions.Regex.Replace(safe, "(?i):\\s*(null)", ": [red]$1[/]");
-	exit:
-	clr.Spectre.Console.AnsiConsole.MarkupLine(safe);
-}
 
+	clr.Spectre.Console.AnsiConsole.MarkupLine(safe);
+
+	exit:
+	json = null;
+}
 
 void mark(color, content) {
 	clr.Ex.Console.Markup("[#" & color & "]"
-		& content.ReplStr("[", "").ReplStr("]", "").ReplStr("[/]", "")
-		& "[/]\n"
+		& content.ToString().Replace("[", "").Replace("]", "").Replace("[/]", "")
+		& "[/]\r\n"
 	);
 }
