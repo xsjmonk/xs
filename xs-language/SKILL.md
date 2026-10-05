@@ -205,14 +205,14 @@ Canonical example: **`Scripts/MediaConvert.xs`** (`PrepareOptions`,
 - Build **`clr.Dictionary`** (`Dictionary\`2[System.String,System.String]`):
   **keys** = labels shown in the menu; **values** = domain codes for `if`/config.
 - **`Prompt(title, options.Keys.ToArrayList())`** returns the **selected key** (label).
-- **`options.get_item(selection)`** yields the **domain value** — branch on that,
+- **`options[selection]`** yields the **domain value** — branch on that,
   not on the label (unless key and value are the same).
 
 ```xs
 var options = (clr.Dictionary)PrepareOptions();
 string selection = clr.Console.Prompt("Which option do you want?",
 	options.Keys.ToArrayList());
-string choice = options.get_item(selection);
+string choice = options[selection];
 ```
 
 **Default / last-used:** `clr.Console.Prompt(title, options.Keys.ToArrayList(), defaultKey)`
@@ -363,7 +363,7 @@ compiler or claim that static inspection proves runtime correctness.
   casts the object, not the property. Use `(bool)(response..IsSuccessStatusCode)`.
   A `try/catch` around this can hide the bug and make translation/API checks look disabled.
 - **`clr.Console.Prompt`:** pass **`options.Keys.ToArrayList()`**; return is the **key**;
-  use **`options.get_item(selection)`** for the domain value (`Scripts/MediaConvert.xs`).
+  use **`options[selection]`** for the domain value (`Scripts/MediaConvert.xs`).
 - `&` is concatenation; `+` is numeric addition.
 - `Replace` is regex; `ReplStr` is plain text.
 - `elseif` is required.
