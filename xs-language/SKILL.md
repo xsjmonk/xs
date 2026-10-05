@@ -32,6 +32,7 @@ drift or require the knowledge to be learned again.
 | `readme_new.md` | Additional language guide and patterns |
 | `ConsoleExtension.md` | Console, progress, and status APIs |
 | `Scripts/*.xs` | Known-working scripts and idioms |
+| `Scripts/MediaConvert.xs` | **`clr.Console.Prompt` droplist**: dictionary keys = labels, values = domain codes |
 
 When sources disagree, follow the priority order in **Priority of evidence**
 below. Search the local scripts for a working example before inventing syntax.
@@ -192,6 +193,34 @@ Use `goto label;` for early exit, retries (`Retry:`), and waits in **Parser
 main** and **Site column/config** blocks only — not inside `func`/`void` when
 `return`/`=>` suffices.
 
+### Dropdown choice lists (`clr.Console.Prompt`)
+
+Use **`clr.Ex.Console.Prompt`** (`clr.Console.Prompt` after `import Ex.Console as
+Console`) for a **droplist / selection menu** in interactive Parser scripts.
+Canonical example: **`Scripts/MediaConvert.xs`** (`PrepareOptions`,
+`PrepareVideoSize`, `PromptVideoSize`).
+
+**Label → value pattern**
+
+- Build **`clr.Dictionary`** (`Dictionary\`2[System.String,System.String]`):
+  **keys** = labels shown in the menu; **values** = domain codes for `if`/config.
+- **`Prompt(title, options.Keys.ToArrayList())`** returns the **selected key** (label).
+- **`options.get_item(selection)`** yields the **domain value** — branch on that,
+  not on the label (unless key and value are the same).
+
+```xs
+var options = (clr.Dictionary)PrepareOptions();
+string selection = clr.Console.Prompt("Which option do you want?",
+	options.Keys.ToArrayList());
+string choice = options.get_item(selection);
+```
+
+**Default / last-used:** `clr.Console.Prompt(title, options.Keys.ToArrayList(), defaultKey)`
+— `defaultKey` must match one choice string (usually a dictionary **key**). Or
+reorder keys manually (`BuildPromptChoices` in `MediaConvert.xs`).
+
+Full rules and API notes: **`xs-language/SKILL.md`** (parent `xs-agent` repo).
+
 Use the canonical patterns already present in `Scripts/*.xs` for:
 
 - command-line arguments `[p1]`, `[p2]`, and interactive fallback;
@@ -200,6 +229,7 @@ Use the canonical patterns already present in `Scripts/*.xs` for:
 - CSV import/export;
 - SQL connections and disposal;
 - console, status, progress, and table output;
+- **`clr.Console.Prompt` droplist** (`Scripts/MediaConvert.xs`: dictionary keys → menu, values → logic);
 - user configuration persistence.
 
 For `<<< >>>` templates, replace placeholders in place
@@ -332,6 +362,8 @@ compiler or claim that static inspection proves runtime correctness.
 - **`(Type)obj..Member` needs inner parentheses:** `(bool)response..IsSuccessStatusCode`
   casts the object, not the property. Use `(bool)(response..IsSuccessStatusCode)`.
   A `try/catch` around this can hide the bug and make translation/API checks look disabled.
+- **`clr.Console.Prompt`:** pass **`options.Keys.ToArrayList()`**; return is the **key**;
+  use **`options.get_item(selection)`** for the domain value (`Scripts/MediaConvert.xs`).
 - `&` is concatenation; `+` is numeric addition.
 - `Replace` is regex; `ReplStr` is plain text.
 - `elseif` is required.
