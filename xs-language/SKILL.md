@@ -123,6 +123,8 @@ func IsValidImageUrl(imageUrl) { ... }
 - After a cast, use `..name` to force CLR member resolution:
   `(clr.SqlConnection)con..Open()`.
 - Dynamic member access: `expr -> "propName"` or `expr -> propVar` (GetProp).
+  For a **Parser `@` config global** from `new { field: value }`, use
+  **`@cfg.field`**, not `@cfg -> "field"` (see **Parser mode `@` config globals**).
 - String literals: `"..."` with escapes, `@"..."` verbatim (`""` = one quote),
   `<<< ... >>>` multiline free-text (see **Long text** below).
 - Regex escapes in normal strings use one backslash (`"\s+"`, `"\d+"`), not
@@ -228,6 +230,40 @@ logic → final `=>`/`return` → helper `func`/`void` definitions below main.
 Use `goto label;` for early exit, retries (`Retry:`), and waits in **Parser
 main** and **Site column/config** blocks only — not inside `func`/`void` when
 `return`/`=>` suffices.
+
+### Parser mode `@` config globals (anonymous objects)
+
+For shared Parser settings (paths, default project name, tool roots), use one
+file-scope `@` global holding an **anonymous object**. Follow both rules:
+
+1. **Directly `new` the global** — assign after imports, not via a factory `func`:
+
+```xs
+@stingrayBuildConfig = new {
+	buildScript: "C:\\path\\build_solution_project.ps1",
+	solutionPath: "C:\\path\\Stingray.sln",
+	defaultProject: "Engineering.Desktop",
+	msbuildGraphHelperRoot: "C:\\path\\msbuild-graph-helper"
+};
+```
+
+Do **not** use `@cfg = BuildSomethingConfig();` where the only job of the
+helper is to `=> new { ... }`.
+
+2. **Use `.` for properties** on that global — member access on the anonymous
+object, not `->` dictionary/GetProp form:
+
+```xs
+string projectName = @stingrayBuildConfig.defaultProject.ToString();
+string solution = @stingrayBuildConfig.solutionPath.ToString();
+```
+
+Do **not** write `(@stingrayBuildConfig -> "defaultProject")` for fields you
+defined on the `new { ... }` object. Reserve `expr -> "propName"` for dynamic
+property names (see **Keywords and expressions**); known config fields use **`.`**.
+
+In **Parser mode**, `@` globals are visible in `func`/`void` in the same file
+(Site mode differs — see **`@` globals in Site mode**).
 
 ### Dropdown choice lists (`clr.Console.Prompt`)
 
@@ -458,6 +494,8 @@ compiler or claim that static inspection proves runtime correctness.
 - Regex escapes: `"\s+"` not `"\\s+"` in normal strings.
 - **Long text:** use **`StringBuilder <<< >>>`** + marker **`ReplStr`/`Replace`**;
   avoid long escaped `"..."` chains (see **Long text** section above).
+- **Parser `@` config:** `@name = new { ... }` at file scope (no factory `func`);
+  read fields with **`@name.field`**, not `@name -> "field"`.
 - **Captured PowerShell:** `RunPowershellFromMemory(command)` — no console noise;
   stdout tokens `ok|…` / `error|…`; caller **`mark()`** with context (see
   **RunPowershellFromMemory contract** above). Do not use `shouldShowError` stderr dumps.
