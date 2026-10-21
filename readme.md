@@ -894,6 +894,10 @@ Items here should remain **technology-agnostic** and broadly reusable.
   * Intended for *side-effect* commands (logging, progress, provisioning).
   * If `engines` contains `"pwsh"` or `"pwsh.exe"`, PowerShell 7 is used.
     Otherwise, it falls back to **Windows PowerShell (`powershell.exe`)**.
+  * In XS: `_ clr.Ex.Powershell.Run(psBlock, ["pwsh"]);` — the **second argument**
+    selects the host; prefer `& $scriptPath @args` inside the block instead of
+    nesting `pwsh.exe -File` when `engines` is already `["pwsh"]`.
+    See **`xs-language/SKILL.md`** (Native PowerShell 7).
   * Return value should **not** be relied on for captured stdout.
 
 #### User-defined PowerShell runner (pattern)

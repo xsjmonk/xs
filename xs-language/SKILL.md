@@ -334,11 +334,55 @@ Treat it as a **machine interface**, not a console command.
 
 **Live vs captured**
 
-- `clr.Ex.Powershell.Run` → interactive / live side effects.
+- `clr.Ex.Powershell.Run` → interactive / live side effects (streams to the CLR
+  console; do not use the return value as reliable captured stdout).
 - `RunPowershellFromMemory(command)` → captured pipeline only.
 
 Canonical implementation: **`Scripts/frequent_user_defined_methods.xs`**
 (`NormalizePowershellStdout` + `RunPowershellFromMemory`).
+
+### Native PowerShell 7 (`clr.Ex.Powershell.Run` second argument)
+
+Engine API (extension assembly, not user-defined):
+
+`ProcessExecutionResult clr.Ex.Powershell.Run(object cmd, object engines = null)`
+
+| `engines` | Host that runs `cmd` |
+| --- | --- |
+| omitted, `null`, or `[]` | **Windows PowerShell 5.1** (`powershell.exe`) |
+| list containing **`"pwsh"`** or **`"pwsh.exe"`** | **PowerShell 7** (`pwsh`) |
+
+**XS call pattern (live output on PS 7):**
+
+```xs
+import Ex.Powershell as Powershell;
+
+// cmd is usually a script block string: "& { ... }"
+_ clr.Ex.Powershell.Run(ps, ["pwsh"]);
+```
+
+Use **`["pwsh"]`** as the **second argument** to select the PS 7 engine. Do not
+assume that embedding `pwsh.exe` or `pwsh` inside the script string is equivalent;
+without `engines`, the outer host is still 5.1 unless you nest another process.
+
+**Inside the script block when `engines` is `["pwsh"]`:**
+
+- Run a `.ps1` on the **same** host: `& $buildScript -SolutionPath $p ...` or
+  `& $buildScript @invokeArgs` (splat). `$PSScriptRoot` applies when the **file**
+  is the entrypoint; for `& $pathToPs1` from a block, pass paths explicitly.
+- Avoid redundant **`& pwsh.exe -File $script`** inside the block unless you
+  deliberately want a second pwsh process.
+
+**When to use which runner**
+
+| Goal | Use |
+| --- | --- |
+| Live build/log output, menus, provisioning | `clr.Ex.Powershell.Run(block, ["pwsh"])` for PS 7 |
+| Same, but must run on 5.1 only | `clr.Ex.Powershell.Run(block, [])` or omit second arg |
+| Parse stdout in XS (`ok\|…`, JSON, paths) | `RunPowershellFromMemory` (encoded command, normalized stdout) |
+
+Full API notes: **`readme.md`** §16.3 (Native PowerShell runner). Example:
+`build_linux_webapi.xs` (`RunPwshScriptFile` + `["pwsh"]`) in consumer repos.
 
 For `<<< >>>` templates, **keep the heredoc static**; use **placeholder markers**
 and `_ tpl.ReplStr("MARKER", val)` (or `.Replace`) in place — not many `&`
@@ -499,6 +543,9 @@ compiler or claim that static inspection proves runtime correctness.
 - **Captured PowerShell:** `RunPowershellFromMemory(command)` — no console noise;
   stdout tokens `ok|…` / `error|…`; caller **`mark()`** with context (see
   **RunPowershellFromMemory contract** above). Do not use `shouldShowError` stderr dumps.
+- **Live PowerShell 7:** `clr.Ex.Powershell.Run(block, ["pwsh"])` — second arg
+  selects **pwsh**, not a string inside the block (see **Native PowerShell 7**
+  above).
 - `await` only on direct CLR method calls returning Task/ValueTask.
 - Site mode: a `null` output field drops the whole row.
 - Site mode: `url` in `config` is the Excel ID, not the downloaded URL.
