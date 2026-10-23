@@ -1,19 +1,16 @@
 import Ex.Console as Console;
 import Ex.Powershell as Powershell;
+import System.Collections.ArrayList as ArrayList;
+import System.IO.File as File;
 
-func BuildDownloadLatestCursorConfig() {
-	=> new {
-		downloadRoot: "R:\\",
-		cursorApiUrl: "https://cursor.com/api/download?platform=win32-x64-user&releaseTrack=stable",
-		aria2MaxConnections: 16,
-		aria2Split: 16,
-		aria2MinSplitSize: "1M"
-	};
-}
+var prefsTpl = new { last_install_kind: "User version" };
+var prefs = LoadUserConfig("download_latest_cursor.json", prefsTpl);
+string installKind = PromptInstallKind(prefs.last_install_kind.ToString());
+SaveUserConfig("download_latest_cursor.json", new { last_install_kind: installKind });
 
-@cursorDlConfig = BuildDownloadLatestCursorConfig();
+@cursorDlConfig = BuildDownloadLatestCursorConfig(installKind);
 
-mark("2B91AF", "Download latest Cursor (Windows x64 User installer, stable)");
+mark("2B91AF", "Download latest Cursor (Windows x64 " & installKind & ", stable)");
 
 bool ok = true;
 
@@ -30,6 +27,62 @@ if(ok) {
 }
 
 => "Done";
+
+func InstallKindLabels() {
+	var labels = new clr.ArrayList();
+	labels.Add("User version");
+	labels.Add("System version");
+	=> labels;
+}
+
+func PromptInstallKind(lastKindIn) {
+	string lastKind = lastKindIn == null ? "" : lastKindIn.ToString().Trim();
+	string defaultKey = "User version";
+	if(lastKind == "System version") { defaultKey = "System version"; }
+
+	string selection = clr.Console.Prompt(
+		"Cursor Windows installer:",
+		InstallKindLabels(),
+		defaultKey
+	);
+
+	if(selection == "System version") { => "System version"; }
+	=> "User version";
+}
+
+func CursorApiUrlForInstallKind(installKindIn) {
+	string kind = installKindIn.ToString();
+	if(kind == "System version") {
+		=> "https://cursor.com/api/download?platform=win32-x64&releaseTrack=stable";
+	}
+	=> "https://cursor.com/api/download?platform=win32-x64-user&releaseTrack=stable";
+}
+
+func CursorPlatformLabelForInstallKind(installKindIn) {
+	string kind = installKindIn.ToString();
+	if(kind == "System version") { => "win32-x64"; }
+	=> "win32-x64-user";
+}
+
+func DefaultExeNameForInstallKind(installKindIn) {
+	string kind = installKindIn.ToString();
+	if(kind == "System version") { => "CursorSetup-x64.exe"; }
+	=> "CursorUserSetup-x64.exe";
+}
+
+func BuildDownloadLatestCursorConfig(installKindIn) {
+	string installKind = installKindIn.ToString();
+	=> new {
+		downloadRoot: "R:\\",
+		installKind: installKind,
+		cursorApiUrl: CursorApiUrlForInstallKind(installKind),
+		platformLabel: CursorPlatformLabelForInstallKind(installKind),
+		defaultExeName: DefaultExeNameForInstallKind(installKind),
+		aria2MaxConnections: 16,
+		aria2Split: 16,
+		aria2MinSplitSize: "1M"
+	};
+}
 
 func EnsureDownloadDriveReady() {
 	string root = (@cursorDlConfig -> "downloadRoot").ToString();
@@ -65,6 +118,8 @@ func GetDownloadLatestCursorPsTemplate() {
 	$ErrorActionPreference = 'Stop';
 	$downloadRoot = '@@DOWNLOAD_ROOT@@';
 	$apiUrl = '@@API_URL@@';
+	$platformLabel = '@@PLATFORM_LABEL@@';
+	$defaultExeName = '@@DEFAULT_EXE@@';
 	$maxConn = @@MAX_CONN@@;
 	$split = @@SPLIT@@;
 	$minSplit = '@@MIN_SPLIT@@';
@@ -88,7 +143,7 @@ func GetDownloadLatestCursorPsTemplate() {
 		exit 1;
 	};
 	Write-Host ('Using aria2: ' + $aria2);
-	Write-Host ('Resolving latest Cursor win32-x64-user from: ' + $apiUrl);
+	Write-Host ('Resolving latest Cursor ' + $platformLabel + ' from: ' + $apiUrl);
 	$meta = Invoke-RestMethod -Uri $apiUrl -UseBasicParsing;
 	if (-not $meta.downloadUrl) {
 		Write-Host 'API response did not include downloadUrl.';
@@ -97,7 +152,7 @@ func GetDownloadLatestCursorPsTemplate() {
 	$downloadUrl = [string]$meta.downloadUrl;
 	$version = [string]$meta.version;
 	$fileName = [IO.Path]::GetFileName(([Uri]$downloadUrl).LocalPath);
-	if ([string]::IsNullOrWhiteSpace($fileName)) { $fileName = 'CursorUserSetup-x64.exe' };
+	if ([string]::IsNullOrWhiteSpace($fileName)) { $fileName = $defaultExeName };
 	Write-Host ('Version: ' + $version);
 	Write-Host ('URL: ' + $downloadUrl);
 	Write-Host ('Destination: ' + (Join-Path $downloadRoot $fileName));
@@ -115,12 +170,16 @@ func BuildDownloadLatestCursorPowershell() {
 	string ps = GetDownloadLatestCursorPsTemplate();
 	string downloadRoot = EscapePsSingleQuoted((@cursorDlConfig -> "downloadRoot").ToString());
 	string apiUrl = EscapePsSingleQuoted((@cursorDlConfig -> "cursorApiUrl").ToString());
+	string platformLabel = EscapePsSingleQuoted((@cursorDlConfig -> "platformLabel").ToString());
+	string defaultExe = EscapePsSingleQuoted((@cursorDlConfig -> "defaultExeName").ToString());
 	int maxConn = (@cursorDlConfig -> "aria2MaxConnections");
 	int split = (@cursorDlConfig -> "aria2Split");
 	string minSplit = EscapePsSingleQuoted((@cursorDlConfig -> "aria2MinSplitSize").ToString());
 
 	ps = ps.ReplStr("@@DOWNLOAD_ROOT@@", downloadRoot);
 	ps = ps.ReplStr("@@API_URL@@", apiUrl);
+	ps = ps.ReplStr("@@PLATFORM_LABEL@@", platformLabel);
+	ps = ps.ReplStr("@@DEFAULT_EXE@@", defaultExe);
 	ps = ps.ReplStr("@@MAX_CONN@@", maxConn.ToString());
 	ps = ps.ReplStr("@@SPLIT@@", split.ToString());
 	ps = ps.ReplStr("@@MIN_SPLIT@@", minSplit);
@@ -130,17 +189,48 @@ func BuildDownloadLatestCursorPowershell() {
 
 func RunPowershellLive(psIn) {
 	string ps = psIn.ToString();
+	int exitCode = 1;
 
 	if(ps.IsEmpty()) { => false; }
 
 	try {
-		_ clr.Ex.Powershell.Run(ps, []);
+		var runner = clr.Ex.Powershell.Run(ps, []);
+		exitCode = clr.System.Convert.ToInt32(runner.ExitCode);
 	}
 	catch {
 		=> false;
 	}
 
-	=> true;
+	=> exitCode == 0;
+}
+
+func GetUserConfigPath(fileName) {
+	string root = clr.System.Environment.GetFolderPath(clr.System.Environment.SpecialFolder.UserProfile);
+	string folder = root & "\\xs_config";
+	if(!clr.System.IO.Directory.Exists(folder)) {
+		clr.System.IO.Directory.CreateDirectory(folder);
+	}
+	=> folder & "\\" & fileName.ToString();
+}
+
+func LoadUserConfig(fileName, templateObj) {
+	string path = GetUserConfigPath(fileName);
+	var obj = templateObj;
+	if(!clr.File.Exists(path)) { => obj; }
+	try {
+		obj = clr.Ex.Json.Deserialize(clr.File.ReadAllText(path), templateObj);
+	}
+	catch {
+		obj = templateObj;
+	}
+	=> obj;
+}
+
+void SaveUserConfig(fileName, obj) {
+	try {
+		clr.File.WriteAllText(GetUserConfigPath(fileName), clr.Ex.Json.Serialize(obj));
+	}
+	catch { }
 }
 
 void mark(color, content) {
