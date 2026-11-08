@@ -17,13 +17,18 @@ bool ok = true;
 if(!EnsureDownloadDriveReady()) {
 	ok = false;
 }
-else if(!RunPowershellLive(BuildDownloadLatestCursorPowershell())) {
-	mark("F65B3B", "Download failed.");
-	ok = false;
-}
-
-if(ok) {
-	mark("5FD7AF", "Download completed.");
+else {
+	int exitCode = RunPowershellExitCode(BuildDownloadLatestCursorPowershell());
+	if(exitCode == 2) {
+		mark("B8A12F", "Installer already exists; download skipped.");
+	}
+	else if(exitCode != 0) {
+		mark("F65B3B", "Download failed.");
+		ok = false;
+	}
+	else {
+		mark("5FD7AF", "Download completed.");
+	}
 }
 
 => "Done";
@@ -155,13 +160,19 @@ func GetDownloadLatestCursorPsTemplate() {
 	if ([string]::IsNullOrWhiteSpace($fileName)) { $fileName = $defaultExeName };
 	Write-Host ('Version: ' + $version);
 	Write-Host ('URL: ' + $downloadUrl);
-	Write-Host ('Destination: ' + (Join-Path $downloadRoot $fileName));
+	$dest = Join-Path $downloadRoot $fileName;
+	Write-Host ('Destination: ' + $dest);
+	if (Test-Path -LiteralPath $dest) {
+		Write-Host '';
+		Write-Host ('Installer already exists (no download): ' + $dest);
+		exit 2;
+	};
 	Write-Host '';
 	& $aria2 -d $downloadRoot -o $fileName -x $maxConn -s $split -k $minSplit --console-log-level=notice --summary-interval=1 $downloadUrl;
 	$exitCode = $LASTEXITCODE;
 	if ($exitCode -ne 0) { Write-Host ('aria2 exited with code ' + $exitCode); exit $exitCode };
 	Write-Host '';
-	Write-Host ('Saved: ' + (Join-Path $downloadRoot $fileName));
+	Write-Host ('Saved: ' + $dest);
 }
 >>> ;
 }
@@ -187,21 +198,18 @@ func BuildDownloadLatestCursorPowershell() {
 	=> ps;
 }
 
-func RunPowershellLive(psIn) {
+func RunPowershellExitCode(psIn) {
 	string ps = psIn.ToString();
-	int exitCode = 1;
 
-	if(ps.IsEmpty()) { => false; }
+	if(ps.IsEmpty()) { => 1; }
 
 	try {
 		var runner = clr.Ex.Powershell.Run(ps, []);
-		exitCode = clr.System.Convert.ToInt32(runner.ExitCode);
+		=> clr.System.Convert.ToInt32(runner.ExitCode);
 	}
 	catch {
-		=> false;
+		=> 1;
 	}
-
-	=> exitCode == 0;
 }
 
 func GetUserConfigPath(fileName) {
