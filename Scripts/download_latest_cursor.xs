@@ -200,16 +200,19 @@ func BuildDownloadLatestCursorPowershell() {
 
 func RunPowershellExitCode(psIn) {
 	string ps = psIn.ToString();
+	int exitCode = 1;
 
-	if(ps.IsEmpty()) { => 1; }
+	if(!ps.IsEmpty()) {
+		try {
+			var runner = clr.Ex.Powershell.Run(ps, []);
+			exitCode = clr.System.Convert.ToInt32(runner.ExitCode);
+		}
+		catch {
+			exitCode = 1;
+		}
+	}
 
-	try {
-		var runner = clr.Ex.Powershell.Run(ps, []);
-		=> clr.System.Convert.ToInt32(runner.ExitCode);
-	}
-	catch {
-		=> 1;
-	}
+	=> exitCode;
 }
 
 func GetUserConfigPath(fileName) {
