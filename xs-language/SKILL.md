@@ -57,11 +57,11 @@ below. Search the local scripts for a working example before inventing syntax.
   `return;` to stop early.
 - Use `elseif`, never `else if`; there is no `foreach`, `switch`, `using`,
   `throw`, nullable type, or `out/ref/in/params` syntax.
-- `catch` has no exception variable, cannot be empty, and cannot contain
-  branching operators such as `goto`, `return`, `=>`, `continue`, or `break`.
-  Use `catch` only for exception-handling statements such as logging or
-  assignment to target variables; prefer a success flag and decide after the
-  `try/catch`.
+- `catch` has no exception variable and cannot be empty. Inside `func`/`void`,
+  `return` / `=>` are allowed in `try` and `catch` (readme.md §8). `goto`,
+  `continue`, and `break` are not allowed in `catch`. Declarations are not
+  allowed in `catch` or `do`. Prefer a success flag and decide after the
+  `try/catch` when the control flow after an error matters.
 - Statements are separated by semicolons; newlines do not provide separation.
 - Opening braces stay on the same line as the declaration or control statement.
 - Variables are region-scoped (top-level, `func`, `void`, `Site`), not
@@ -165,8 +165,15 @@ many `&` interpolations inside the template.
 **Anti-pattern:** one giant string with `\"` and `\n` escapes — hard to read and
 easy to break; use `<<< >>>` + markers instead.
 
-- Anonymous objects are immutable; create and assign a new object to change
-  their shape.
+- Anonymous objects (`new { a: 1, b: "x" }`) are editable, but type-locked:
+  - `obj.prop = value;` edits an existing property, and the value must have the
+    property's original type. If `name` is a string, assigning an `int` is invalid.
+  - A nested anonymous property must keep the same sub-property names and types
+    on every assignment.
+  - Reassigning a whole `new { ... }` object is allowed only when it has the same
+    property names and types as the original.
+  - A wrong-type or wrong-shape assignment is a compile-time error; confirm exact
+    error text against a working script before relying on it.
 
 ## Variables and types
 
@@ -177,6 +184,12 @@ easy to break; use `<<< >>>` + markers instead.
   as `new clr.SomeType()`, a cast like `(clr.JObject)x`, or another concrete
   value. Never write `var a = null`; the compiler cannot infer the variable
   type. Do not later assign a different type to the same `var` variable.
+- Null-initialized collections and objects use working idioms, not bare
+  `var x = null;`: `var parts = null.ToArrayList();`, `var list = new clr.System.Collections.ArrayList();`,
+  or an explicit type such as `string x = null;` / `object value = null;`.
+- `LoadUserConfig` can return `null` when the file is missing. Initialize from a
+  template, reassign, then null-check (`ClrCode/Media/MediaConvert.xs`):
+  `var cfg = new { last_folder: "" }; cfg = LoadUserConfig("x.txt", cfg); if(cfg != null) { ... }`.
 - `StringBuilder` is a built-in type and may be used without `new`.
 - Redeclaration behaves like assignment and does not reinitialize a variable;
   initialization happens only once (`StringBuilder sb;` inside an `if` does
@@ -210,10 +223,12 @@ There are three API tiers:
    through their `clr` namespace.
 
 Do not invent aliases or call CLR methods as engine-native helpers. Do not
-`clr.`-prefix a Tier-1 native or bare-call a Tier-2/3 method. CLR instance
-methods are not extension-style callable (`s.ToLower()` is invalid); only
-engine-native helpers and user `func` methods may be called extension-style.
-Follow working scripts when evidence differs. Confirm signatures in
+`clr.`-prefix a Tier-1 native or bare-call a Tier-2/3 method. Instance methods on
+CLR values are called with a dot and are used throughout working scripts
+(`value.ToString()`, `value.Trim()`, `value.Replace("[", "")`, `folder.ToLower()`).
+A dot-call on a CLR string resolves to the CLR plain-text method, while bare
+`Replace(content, pattern, replacer)` is the engine regex helper. Static CLR
+members always use the `clr.` path. Follow working scripts when evidence differs. Confirm signatures in
 `ConsoleExtension.md`, `readme.md`, or working scripts.
 
 When a CLR object implements disposal, call `Dispose()` immediately after its
@@ -524,7 +539,7 @@ compiler or claim that static inspection proves runtime correctness.
   `goto` + one final `=>`. **`func`/`void` can** use `return`/`=>` freely;
   avoid unnecessary **`goto exit`** in helpers.
 - `catch {}` is invalid.
-- `catch` cannot contain `goto`, `return`, `=>`, `continue`, or `break`.
+- `catch` cannot contain `goto`, `continue`, or `break`; `return` / `=>` are allowed in func/void.
 - `var x = null` is invalid; initialize `var` with `new clr...`, a cast, or
   another concrete value, and do not reassign a different type later.
 - `[ident]` is dictionary access, not a one-element list.
@@ -565,6 +580,16 @@ When sources disagree, use this order:
 3. `readme.md` (living spec)
 4. `readme_new.md` and `ConsoleExtension.md`
 5. General programming-language assumptions (last resort)
+
+## Known conflicts between sources (resolved)
+
+| Topic | readme.md / other source | Resolution |
+| --- | --- | --- |
+| `return` in `catch` | readme.md §8 allows it; §15/§16.5 say never | Allowed in func/void; no `goto` in catch |
+| `else if` | readme.md says unsupported; `Interpreter.ATG` `IfTail` defines `elseif` only | Use `elseif`; legacy `else if` in crawler scripts must not be copied |
+| Anonymous objects | readme.md says immutable | Editable, but each property keeps its type and nested sub-shapes must match exactly (confirmed by the user) |
+| `var x = null` | readme.md forbids | Forbidden; the scripts' many occurrences are legacy |
+| Instance calls on CLR values | readme.md says every CLR call needs `clr.` | Static via `clr.`; instance via dot |
 
 ## Completion standard
 
