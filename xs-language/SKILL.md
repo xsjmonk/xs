@@ -122,11 +122,15 @@ func IsValidImageUrl(imageUrl) { ... }
   Write `(bool)(response..IsSuccessStatusCode)` or compare without casting.
 - **Single dot after a cast is also wrong:** `(Type)obj.Member` parses as `((Type)obj).Member`
   and fails with `property Member is not found`. Write `(Type)(obj..Member)`.
+- **Bare `if(x)` is a non-null test:** on an untyped parameter, `A(false)` still takes `if(x)`.
+  Write `if(x == true)`, `if(!x)`, or copy to a typed `bool` local first. `&&`, `||`, `!` are fine.
 - **Untyped values need `..`:** items from an ArrayList (`records[i]`) and anonymous objects read
   back from collections: `item..Prop`.
 - **One `func` must return one shape and one scalar type:** every `=> new { ... }` must have the
   same property names and types (`inconsistent return types`); every scalar `=>` must have the
   same type (`Int32 vs Int64`). Set variables on each path, then return once.
+  Constants: use the literal `-1l` for long (grammar: `longNumber = digit {digit} "l"`; the
+  minus is a unary operator). Use `clr.System.Convert.ToInt64(x)` only for runtime values.
 - After a cast, use `..name` to force CLR member resolution:
   `(clr.SqlConnection)con..Open()`.
 - Dynamic member access: `expr -> "propName"` or `expr -> propVar` (GetProp).
