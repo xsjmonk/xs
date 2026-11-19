@@ -120,6 +120,13 @@ func IsValidImageUrl(imageUrl) { ... }
 - **Cast also binds before `..`:** `(bool)response..IsSuccessStatusCode` is
   parsed as `((bool)response)..IsSuccessStatusCode` and throws at runtime.
   Write `(bool)(response..IsSuccessStatusCode)` or compare without casting.
+- **Single dot after a cast is also wrong:** `(Type)obj.Member` parses as `((Type)obj).Member`
+  and fails with `property Member is not found`. Write `(Type)(obj..Member)`.
+- **Untyped values need `..`:** items from an ArrayList (`records[i]`) and anonymous objects read
+  back from collections: `item..Prop`.
+- **One `func` must return one shape and one scalar type:** every `=> new { ... }` must have the
+  same property names and types (`inconsistent return types`); every scalar `=>` must have the
+  same type (`Int32 vs Int64`). Set variables on each path, then return once.
 - After a cast, use `..name` to force CLR member resolution:
   `(clr.SqlConnection)con..Open()`.
 - Dynamic member access: `expr -> "propName"` or `expr -> propVar` (GetProp).
@@ -519,6 +526,18 @@ For every modified script:
 When the repository does not contain the required runtime or test harness,
 report that limitation explicitly. Do not substitute a different language
 compiler or claim that static inspection proves runtime correctness.
+
+### Engine and compile-check (verified)
+
+- Run with the `clr` command on PATH; it loads the `Ex` extensions. Local project build outputs
+  of the engine may lack them (`CLR type Ex.Console not found`). Check which `clr` is on PATH
+  when `Ex.*` is not found.
+- Compile without running: copy the script, replace the top-level main call with a constant,
+  run `clr copy.xs`.
+- Engine error positions can be absolute character offsets; bisect with probe scripts.
+- A top-level `=>` value is not printed; use `clr.Ex.Console.Markup(...)` to observe values.
+- Dlinq: with `import Dlinq.Linq as Dlinq;` use `clr.Dlinq.Select`; without that import use
+  `clr.Dlinq.Linq.*`.
 
 ## Common pitfalls
 
